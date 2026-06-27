@@ -40,7 +40,7 @@ app.post("/api/rsvp", (req, res) => {
 
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(resolve(__dirname, "..", "dist")));
-  app.get("/{*path}", (_req, res) => {
+  app.use((_req, res) => {
     res.sendFile(resolve(__dirname, "..", "dist", "index.html"));
   });
 }
