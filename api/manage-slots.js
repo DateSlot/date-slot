@@ -24,7 +24,7 @@ export default async function handler(req, res) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, password_hash")
+    .select("id, password_hash, likes")
     .eq("username", username)
     .maybeSingle();
 
@@ -39,7 +39,7 @@ export default async function handler(req, res) {
     const { data, error } = await supabase
       .from("available_slots")
       .select(`
-        id, date, time_start, time_end, is_booked, created_at,
+        id, date, time_start, time_end, activity, is_booked, created_at,
         rsvps ( id, name, created_at )
       `)
       .eq("profile_id", profileId)
@@ -53,23 +53,24 @@ export default async function handler(req, res) {
       date: s.date,
       time_start: s.time_start,
       time_end: s.time_end,
+      activity: s.activity,
       is_booked: s.is_booked,
       booker_name: s.rsvps?.[0]?.name ?? null,
       created_at: s.created_at,
     }));
 
-    return res.status(200).json(slots);
+    return res.status(200).json({ slots, likes: profile.likes });
   }
 
   if (req.method === "POST") {
-    const { date, time_start, time_end } = req.body;
+    const { date, time_start, time_end, activity } = req.body;
     if (!date || !time_start || !time_end) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
     const { data, error } = await supabase
       .from("available_slots")
-      .insert({ profile_id: profileId, date, time_start, time_end })
+      .insert({ profile_id: profileId, date, time_start, time_end, activity: activity?.trim() || null })
       .select()
       .single();
 

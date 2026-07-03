@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, username, display_name")
+    .select("id, username, display_name, likes")
     .eq("username", username)
     .maybeSingle();
 
@@ -32,7 +32,7 @@ export default async function handler(req, res) {
 
   const { data: slots, error: slotsError } = await supabase
     .from("available_slots")
-    .select("id, date, time_start, time_end")
+    .select("id, date, time_start, time_end, activity")
     .eq("profile_id", profile.id)
     .eq("is_booked", false)
     .gte("date", today)
@@ -50,7 +50,11 @@ export default async function handler(req, res) {
   }
 
   return res.status(200).json({
-    profile: { username: profile.username, display_name: profile.display_name },
+    profile: {
+      username: profile.username,
+      display_name: profile.display_name,
+      likes: profile.likes,
+    },
     slots: grouped,
   });
 }

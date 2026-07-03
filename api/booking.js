@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
   const { data: slot, error: fetchError } = await supabase
     .from("available_slots")
-    .select("id, is_booked, profile_id")
+    .select("id, is_booked, profile_id, activity")
     .eq("id", slot_id)
     .single();
 
@@ -38,11 +38,13 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Failed to book slot" });
   }
 
+  const finalActivity = slot.activity || activity?.trim() || "booking";
+
   const rsvpData = {
     slot_id,
     profile_id: slot.profile_id,
     name: name.trim(),
-    activity: activity?.trim() || "booking",
+    activity: finalActivity,
   };
 
   const { error: rsvpError } = await supabase
@@ -57,5 +59,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Failed to create RSVP" });
   }
 
-  return res.status(200).json({ success: true });
+  return res.status(200).json({ success: true, activity: finalActivity });
 }

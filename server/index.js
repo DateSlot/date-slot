@@ -70,7 +70,7 @@ app.post("/api/booking", async (req, res) => {
 
   const { data: slot, error: fetchError } = await supabase
     .from("available_slots")
-    .select("id, is_booked, profile_id")
+    .select("id, is_booked, profile_id, activity")
     .eq("id", slot_id)
     .single();
 
@@ -92,21 +92,21 @@ app.post("/api/booking", async (req, res) => {
     return res.status(500).json({ error: "Failed to book slot" });
   }
 
-  const rsvpData = {
+  const finalActivity = slot.activity || activity?.trim() || "booking";
+
+  const { error: rsvpError } = await supabase.from("rsvps").insert({
     slot_id,
     profile_id: slot.profile_id,
     name: name.trim(),
-    activity: activity?.trim() || "booking",
-  };
-
-  const { error: rsvpError } = await supabase.from("rsvps").insert(rsvpData);
+    activity: finalActivity,
+  });
 
   if (rsvpError) {
     await supabase.from("available_slots").update({ is_booked: false }).eq("id", slot_id);
     return res.status(500).json({ error: "Failed to create RSVP" });
   }
 
-  res.json({ success: true });
+  res.json({ success: true, activity: finalActivity });
 });
 
 app.post("/api/create-profile", async (req, res) => {
@@ -156,7 +156,7 @@ app.get("/api/public-profile", async (req, res) => {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, username, display_name")
+    .select("id, username, display_name, likes")
     .eq("username", username)
     .maybeSingle();
 
@@ -167,7 +167,7 @@ app.get("/api/public-profile", async (req, res) => {
 
   const { data: slots, error: slotsError } = await supabase
     .from("available_slots")
-    .select("id, date, time_start, time_end")
+    .select("id, date, time_start, time_end, activity")
     .eq("profile_id", profile.id)
     .eq("is_booked", false)
     .gte("date", today)
@@ -183,7 +183,7 @@ app.get("/api/public-profile", async (req, res) => {
   }
 
   res.json({
-    profile: { username: profile.username, display_name: profile.display_name },
+    profile: { username: profile.username, display_name: profile.display_name, likes: profile.likes },
     slots: grouped,
   });
 });
@@ -225,7 +225,7 @@ app.get("/api/manage-slots", async (req, res) => {
   const { data, error } = await supabase
     .from("available_slots")
     .select(`
-      id, date, time_start, time_end, is_booked, created_at,
+      id, date, time_start, time_end, activity, is_booked, created_at,
       rsvps ( id, name, created_at )
     `)
     .eq("profile_id", profile.id)
@@ -239,12 +239,19 @@ app.get("/api/manage-slots", async (req, res) => {
     date: s.date,
     time_start: s.time_start,
     time_end: s.time_end,
+    activity: s.activity,
     is_booked: s.is_booked,
     booker_name: s.rsvps?.[0]?.name ?? null,
     created_at: s.created_at,
   }));
 
-  res.json(slots);
+  const { data: profileData } = await supabase
+    .from("profiles")
+    .select("likes")
+    .eq("id", profile.id)
+    .single();
+
+  res.json({ slots, likes: profileData?.likes });
 });
 
 app.post("/api/manage-slots", async (req, res) => {
@@ -255,14 +262,14 @@ app.post("/api/manage-slots", async (req, res) => {
   const profile = await authenticateProfile(username, password);
   if (!profile) return res.status(401).json({ error: "Unauthorized" });
 
-  const { date, time_start, time_end } = req.body;
+  const { date, time_start, time_end, activity } = req.body;
   if (!date || !time_start || !time_end) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
   const { data, error } = await supabase
     .from("available_slots")
-    .insert({ profile_id: profile.id, date, time_start, time_end })
+    .insert({ profile_id: profile.id, date, time_start, time_end, activity: activity?.trim() || null })
     .select()
     .single();
 
@@ -296,6 +303,36 @@ app.delete("/api/manage-slots", async (req, res) => {
     .delete()
     .eq("id", slot_id)
     .eq("profile_id", profile.id);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+app.post("/api/update-likes", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const password = authHeader.slice(7);
+  const { username, likes } = req.body;
+  if (!username) return res.status(400).json({ error: "Missing username" });
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, password_hash")
+    .eq("username", username)
+    .maybeSingle();
+
+  if (!profile) return res.status(404).json({ error: "Profile not found" });
+
+  const hash = createHash("sha256").update(password).digest("hex");
+  if (hash !== profile.password_hash) return res.status(401).json({ error: "Unauthorized" });
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ likes: likes?.trim() || null })
+    .eq("id", profile.id);
 
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });

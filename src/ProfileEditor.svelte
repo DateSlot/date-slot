@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import { ACTIVITY_OPTIONS, CUSTOM_ACTIVITY } from "./lib/types.ts";
 
 let { username }: { username: string } = $props();
 
@@ -10,6 +11,7 @@ interface SlotRow {
   date: string;
   time_start: string;
   time_end: string;
+  activity: string | null;
   is_booked: boolean;
   booker_name: string | null;
   created_at: string;
@@ -20,12 +22,17 @@ let loggedIn = $state(false);
 let loginError = $state("");
 
 let slots = $state<SlotRow[]>([]);
+let likes = $state("");
+let likesSaved = $state(false);
+let likesSaving = $state(false);
 let loading = $state(false);
 let error = $state("");
 
 let newDate = $state("");
 let newTimeStart = $state("18:00");
 let newTimeEnd = $state("21:00");
+let newActivity = $state("");
+let newCustomActivity = $state("");
 let adding = $state(false);
 
 let deleting = $state<string | null>(null);
@@ -69,6 +76,7 @@ function logout() {
   password = "";
   sessionStorage.removeItem(PWD_KEY);
   slots = [];
+  likes = "";
 }
 
 async function loadSlots() {
@@ -80,7 +88,9 @@ async function loadSlots() {
     });
     if (res.status === 401) { logout(); return; }
     if (!res.ok) throw new Error("Failed to load slots");
-    slots = await res.json();
+    const data = await res.json();
+    slots = data.slots || [];
+    likes = data.likes || "";
   } catch (e) {
     error = (e as Error).message;
   } finally {
@@ -92,18 +102,24 @@ async function addSlot() {
   if (!newDate || !newTimeStart || !newTimeEnd) return;
   adding = true;
   try {
+    const activity = newActivity === CUSTOM_ACTIVITY
+      ? newCustomActivity.trim() || null
+      : newActivity || null;
+
     const res = await fetch(`/api/manage-slots?username=${encodeURIComponent(username)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${password}`,
       },
-      body: JSON.stringify({ date: newDate, time_start: newTimeStart, time_end: newTimeEnd }),
+      body: JSON.stringify({ date: newDate, time_start: newTimeStart, time_end: newTimeEnd, activity }),
     });
     if (!res.ok) throw new Error("Failed to add slot");
     newDate = "";
     newTimeStart = "18:00";
     newTimeEnd = "21:00";
+    newActivity = "";
+    newCustomActivity = "";
     loadSlots();
   } catch (e) {
     error = (e as Error).message;
@@ -130,6 +146,40 @@ async function deleteSlot(slotId: string) {
   } finally {
     deleting = null;
   }
+}
+
+async function saveLikes() {
+  likesSaving = true;
+  likesSaved = false;
+  try {
+    const res = await fetch("/api/update-likes", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${password}`,
+      },
+      body: JSON.stringify({ username, likes }),
+    });
+    if (!res.ok) throw new Error("Failed to save");
+    likesSaved = true;
+    setTimeout(() => { likesSaved = false; }, 2000);
+  } catch {
+    error = "Failed to save likes";
+  } finally {
+    likesSaving = false;
+  }
+}
+
+function activityEmoji(a: string | null) {
+  if (!a) return "";
+  const opt = ACTIVITY_OPTIONS.find((o) => o.id === a);
+  return opt ? opt.emoji : "💫";
+}
+
+function activityTitle(a: string | null) {
+  if (!a) return "";
+  const opt = ACTIVITY_OPTIONS.find((o) => o.id === a);
+  return opt ? opt.title : a;
 }
 
 function fmtTime(t: string) { return t?.slice(0, 5) ?? ""; }
@@ -179,6 +229,41 @@ function publicUrl() {
           {adding ? "Adding..." : "Add 💖"}
         </button>
       </div>
+      <div class="activity-picker">
+        <p class="activity-label">Activity (optional)</p>
+        <div class="activity-options">
+          <button class="activity-opt" class:active={newActivity === ""} onclick={() => { newActivity = ""; newCustomActivity = ""; }}>Any</button>
+          {#each ACTIVITY_OPTIONS as opt}
+            <button class="activity-opt" class:active={newActivity === opt.id} onclick={() => { newActivity = opt.id; newCustomActivity = ""; }}>
+              {opt.emoji} {opt.title}
+            </button>
+          {/each}
+          <button class="activity-opt" class:active={newActivity === CUSTOM_ACTIVITY} onclick={() => newActivity = CUSTOM_ACTIVITY}>
+            ✏️ Custom
+          </button>
+        </div>
+        {#if newActivity === CUSTOM_ACTIVITY}
+          <input type="text" bind:value={newCustomActivity} class="text-input" placeholder="e.g. Bowling 🎳" />
+        {/if}
+      </div>
+    </div>
+
+    <div class="likes-form">
+      <h2>Things I like 💖</h2>
+      <textarea
+        class="text-input likes-input"
+        bind:value={likes}
+        placeholder="e.g. sushi, sunsets, cats, board games..."
+        rows="3"
+      ></textarea>
+      <div class="likes-actions">
+        <button class="btn confirm likes-btn" onclick={saveLikes} disabled={likesSaving}>
+          {likesSaving ? "Saving..." : "Save 💖"}
+        </button>
+        {#if likesSaved}
+          <span class="saved-note">Saved! ✨</span>
+        {/if}
+      </div>
     </div>
 
     {#if error}
@@ -196,6 +281,7 @@ function publicUrl() {
             <tr>
               <th>Date</th>
               <th>Time</th>
+              <th>Activity</th>
               <th>Status</th>
               <th>Booker</th>
               <th></th>
@@ -206,6 +292,13 @@ function publicUrl() {
               <tr>
                 <td>{fmtDate(slot.date)}</td>
                 <td>{fmtTime(slot.time_start)} – {fmtTime(slot.time_end)}</td>
+                <td class="activity-cell">
+                  {#if slot.activity}
+                    {activityEmoji(slot.activity)} {activityTitle(slot.activity)}
+                  {:else}
+                    <span class="any-activity">Any</span>
+                  {/if}
+                </td>
                 <td>
                   <span class="badge" class:available={!slot.is_booked} class:booked={slot.is_booked}>
                     {slot.is_booked ? "Booked" : "Free"}
@@ -404,6 +497,62 @@ function publicUrl() {
     padding: 14px 24px !important;
     white-space: nowrap;
   }
+  .activity-picker {
+    margin-top: 14px;
+  }
+  .activity-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-light);
+    margin: 0 0 8px;
+  }
+  .activity-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .activity-opt {
+    font-family: "Fredoka", sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border: 2px solid var(--purple-light);
+    border-radius: 20px;
+    background: white;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .activity-opt:hover {
+    background: var(--pink-pale);
+  }
+  .activity-opt.active {
+    background: linear-gradient(135deg, var(--pink), var(--purple-light));
+    color: white;
+    border-color: transparent;
+  }
+  .likes-form {
+    margin-bottom: 20px;
+  }
+  .likes-input {
+    resize: vertical;
+    font-size: 16px !important;
+    min-height: 80px;
+  }
+  .likes-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 10px;
+  }
+  .likes-btn {
+    padding: 10px 28px !important;
+    font-size: 15px !important;
+  }
+  .saved-note {
+    font-size: 14px;
+    color: #155724;
+  }
   .table-wrap {
     overflow-x: auto;
   }
@@ -423,6 +572,13 @@ function publicUrl() {
     padding: 10px;
     border-bottom: 1px solid var(--pink-pale);
     color: var(--text);
+  }
+  .activity-cell {
+    font-size: 14px;
+  }
+  .any-activity {
+    color: var(--text-light);
+    font-style: italic;
   }
   .badge {
     font-size: 13px;

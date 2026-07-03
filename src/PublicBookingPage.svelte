@@ -2,15 +2,19 @@
 import { onMount } from "svelte";
 import confetti from "canvas-confetti";
 import type { SlotsByDate, AvailableSlot } from "./lib/types.ts";
+import { ACTIVITY_OPTIONS, CUSTOM_ACTIVITY } from "./lib/types.ts";
 
 let { username }: { username: string } = $props();
 
 let displayName = $state("");
+let likes = $state("");
 let slotsByDate: SlotsByDate = $state({});
 let availableDates: string[] = $state([]);
 let selectedDate = $state("");
 let selectedSlot: AvailableSlot | null = $state(null);
 let bookerName = $state("");
+let bookerActivity = $state("");
+let bookerCustomActivity = $state("");
 let loading = $state(true);
 let error = $state("");
 let submitting = $state(false);
@@ -32,6 +36,7 @@ async function loadProfile() {
       return;
     }
     displayName = data.profile.display_name;
+    likes = data.profile.likes || "";
     slotsByDate = data.slots || {};
     availableDates = Object.keys(slotsByDate).sort();
     if (availableDates.length > 0) {
@@ -46,6 +51,8 @@ async function loadProfile() {
 
 function selectSlot(slot: AvailableSlot) {
   selectedSlot = selectedSlot?.id === slot.id ? null : slot;
+  bookerActivity = "";
+  bookerCustomActivity = "";
 }
 
 async function book() {
@@ -53,13 +60,21 @@ async function book() {
   submitting = true;
   submitError = "";
   try {
+    const body: Record<string, string> = {
+      slot_id: selectedSlot.id,
+      name: bookerName.trim(),
+    };
+
+    if (!selectedSlot.activity) {
+      body.activity = bookerActivity === CUSTOM_ACTIVITY
+        ? bookerCustomActivity.trim()
+        : bookerActivity;
+    }
+
     const res = await fetch("/api/booking", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        slot_id: selectedSlot.id,
-        name: bookerName.trim(),
-      }),
+      body: JSON.stringify(body),
     });
     if (res.status === 409) {
       submitError = "That slot was just taken! Pick another 💕";
@@ -91,6 +106,12 @@ function fmtDate(d: string) {
 function fmtTime(t: string) {
   return t?.slice(0, 5) ?? "";
 }
+
+function slotLabel(slot: AvailableSlot) {
+  if (!slot.activity) return "";
+  const opt = ACTIVITY_OPTIONS.find((o) => o.id === slot.activity);
+  return opt ? `${opt.emoji} ${opt.title}` : `💫 ${slot.activity}`;
+}
 </script>
 
 <div class="card">
@@ -110,6 +131,13 @@ function fmtTime(t: string) {
       <h1>Book {displayName} 💕</h1>
       <a href="/u/{username}/edit" class="manage-btn">Manage 🔐</a>
     </div>
+
+    {#if likes}
+      <div class="likes-section">
+        <p class="likes-text">💖 {likes}</p>
+      </div>
+    {/if}
+
     <p class="sub">Pick a time that works for you</p>
 
     {#if availableDates.length === 0}
@@ -140,6 +168,9 @@ function fmtTime(t: string) {
                 onclick={() => selectSlot(slot)}
               >
                 🕐 {fmtTime(slot.time_start)} – {fmtTime(slot.time_end)}
+                {#if slot.activity}
+                  <br><span class="slot-activity">{slotLabel(slot)}</span>
+                {/if}
               </button>
             {/each}
           </div>
@@ -158,6 +189,29 @@ function fmtTime(t: string) {
                 onkeydown={(e) => e.key === "Enter" && book()}
               />
             </div>
+
+            {#if !selectedSlot.activity}
+              <div class="field">
+                <p class="field-label">Pick an activity</p>
+                <div class="activity-options">
+                  <button class="activity-opt" class:active={bookerActivity === ""} onclick={() => { bookerActivity = ""; bookerCustomActivity = ""; }}>
+                    Surprise me 🎲
+                  </button>
+                  {#each ACTIVITY_OPTIONS as opt}
+                    <button class="activity-opt" class:active={bookerActivity === opt.id} onclick={() => { bookerActivity = opt.id; bookerCustomActivity = ""; }}>
+                      {opt.emoji} {opt.title}
+                    </button>
+                  {/each}
+                  <button class="activity-opt" class:active={bookerActivity === CUSTOM_ACTIVITY} onclick={() => bookerActivity = CUSTOM_ACTIVITY}>
+                    ✏️ Custom
+                  </button>
+                </div>
+                {#if bookerActivity === CUSTOM_ACTIVITY}
+                  <input type="text" bind:value={bookerCustomActivity} class="text-input" placeholder="e.g. Bowling 🎳" style="margin-top:8px" />
+                {/if}
+              </div>
+            {/if}
+
             {#if submitError}
               <p class="form-error">{submitError}</p>
             {/if}
@@ -331,6 +385,7 @@ function fmtTime(t: string) {
     color: var(--text);
     cursor: pointer;
     transition: all 0.15s;
+    line-height: 1.4;
   }
   .slot-btn:hover {
     border-color: var(--purple);
@@ -341,6 +396,10 @@ function fmtTime(t: string) {
     color: white;
     border-color: transparent;
     box-shadow: 0 4px 16px rgba(200, 120, 180, 0.3);
+  }
+  .slot-activity {
+    font-size: 12px;
+    opacity: 0.8;
   }
 
   .page-head {
@@ -368,5 +427,47 @@ function fmtTime(t: string) {
   .manage-btn:hover {
     background: var(--purple-light);
     color: white;
+  }
+
+  .likes-section {
+    background: var(--pink-pale);
+    border-radius: 16px;
+    padding: 12px 18px;
+    margin: 8px auto 16px;
+    max-width: 380px;
+  }
+
+  .likes-text {
+    font-size: 15px;
+    color: var(--text);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .activity-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .activity-opt {
+    font-family: "Fredoka", sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border: 2px solid var(--purple-light);
+    border-radius: 20px;
+    background: white;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .activity-opt:hover {
+    background: var(--pink-pale);
+  }
+  .activity-opt.active {
+    background: linear-gradient(135deg, var(--pink), var(--purple-light));
+    color: white;
+    border-color: transparent;
   }
 </style>
