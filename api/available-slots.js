@@ -12,6 +12,7 @@ export default async function handler(req, res) {
     .from("available_slots")
     .select("id, date, time_start, time_end")
     .eq("is_booked", false)
+    .is("profile_id", null)
     .gte("date", today)
     .order("date")
     .order("time_start");

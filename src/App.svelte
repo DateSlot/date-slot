@@ -3,9 +3,13 @@ import { gsap } from "gsap";
 import { onMount } from "svelte";
 import confetti from "canvas-confetti";
 import Admin from "./Admin.svelte";
+import CreateProfile from "./CreateProfile.svelte";
+import PublicBookingPage from "./PublicBookingPage.svelte";
+import ProfileEditor from "./ProfileEditor.svelte";
 import type { AvailableSlot, SlotsByDate } from "./lib/types.ts";
 
-let page: "ask" | "options" | "when" | "done" | "admin" = $state("ask");
+let page: "ask" | "options" | "when" | "done" | "admin" | "create-profile" | "profile-book" | "profile-edit" = $state("ask");
+let pageParams = $state<Record<string, string>>({});
 
 let noBtn: HTMLElement = $state() as unknown as HTMLElement;
 let tx = 0;
@@ -31,6 +35,28 @@ let submitError = $state("");
 
 onMount(() => {
   ready = true;
+  const path = window.location.pathname;
+
+  const editMatch = path.match(/^\/u\/([^/]+)\/edit$/);
+  if (editMatch) {
+    page = "profile-edit";
+    pageParams = { username: editMatch[1] };
+    document.title = "Manage your slots";
+    return;
+  }
+
+  const profileMatch = path.match(/^\/u\/([^/]+)$/);
+  if (profileMatch) {
+    page = "profile-book";
+    pageParams = { username: profileMatch[1] };
+    return;
+  }
+
+  if (path === "/create") {
+    page = "create-profile";
+    document.title = "Create your booking page";
+    return;
+  }
 });
 
 function cancelSlow() {
@@ -241,7 +267,10 @@ function sayYes() {
       <button class="btn yes" onclick={sayYes}>Yes 💖</button>
       <button bind:this={noBtn} class="btn no">No 💔</button>
     </div>
-    <button class="admin-link" onclick={() => page = "admin"}>✦</button>
+    <nav class="bottom-nav">
+      <a href="/create" class="nav-link">Create your booking page ✨</a>
+      <button class="admin-link" onclick={() => page = "admin"}>✦</button>
+    </nav>
   </div>
 {:else if page === "options"}
   <div class="card">
@@ -352,6 +381,15 @@ function sayYes() {
     <p class="big-emoji">🎉</p>
     <p class="sub">Can't wait! See you soon~ 💖</p>
   </div>
+{:else if page === "create-profile"}
+  <a href="/" class="back-link">← Home</a>
+  <CreateProfile />
+{:else if page === "profile-book"}
+  <a href="/" class="back-link">← Home</a>
+  <PublicBookingPage username={pageParams.username} />
+{:else if page === "profile-edit"}
+  <a href="/" class="back-link">← Home</a>
+  <ProfileEditor username={pageParams.username} />
 {:else if page === "admin"}
   <Admin />
 {/if}
@@ -578,6 +616,51 @@ function sayYes() {
     cursor: default;
   }
 
+  .bottom-nav {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  .nav-link {
+    font-family: "Fredoka", sans-serif;
+    font-size: 14px;
+    color: var(--purple);
+    text-decoration: none;
+    padding: 6px 16px;
+    border: 2px solid var(--purple-light);
+    border-radius: 20px;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .nav-link:hover {
+    background: var(--purple-light);
+    color: white;
+  }
+
+  .back-link {
+    font-family: "Fredoka", sans-serif;
+    font-size: 14px;
+    color: var(--text-light);
+    text-decoration: none;
+    padding: 6px 14px;
+    border: 2px solid var(--pink-light);
+    border-radius: 20px;
+    background: var(--white);
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .back-link:hover {
+    background: var(--pink-pale);
+    color: var(--text);
+  }
+
   .admin-link {
     font-family: "Fredoka", sans-serif;
     font-size: 14px;
@@ -585,7 +668,6 @@ function sayYes() {
     background: none;
     border: none;
     cursor: pointer;
-    margin-top: 24px;
     padding: 4px 8px;
     opacity: 0.5;
     transition: opacity 0.15s;
