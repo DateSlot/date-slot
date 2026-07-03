@@ -1,0 +1,1 @@
+ALTER TABLE rsvps ALTER COLUMN activity DROP NOT NULL;

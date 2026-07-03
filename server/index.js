@@ -96,7 +96,7 @@ app.post("/api/booking", async (req, res) => {
     slot_id,
     profile_id: slot.profile_id,
     name: name.trim(),
-    activity: activity?.trim() || null,
+    activity: activity?.trim() || "booking",
   };
 
   const { error: rsvpError } = await supabase.from("rsvps").insert(rsvpData);
