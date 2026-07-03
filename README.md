@@ -1,14 +1,15 @@
 # a date with me? 💕
 
-A kawaii-themed interactive dating proposal site. Ask someone out with style — complete with a fleeing "No" button, activity picker, date/time selection, RSVP storage, and confetti.
+A kawaii-themed interactive dating proposal site. Ask someone out with style — complete with a fleeing "No" button, activity picker, available time slots, RSVP storage, and confetti.
 
 ## Features
 
 - **Kawaii Aesthetic** — Pink/purple My Melody & Kuromi inspired design, Fredoka font, rounded corners, soft shadows
 - **Fleeing No Button** — GSAP-powered panicked escape with startle response, cubic flee curve, and idle return
 - **Activity Picker** — Choose from park, bar, restaurant, or museum
-- **Date & Time Picker** — Select a date and time range
-- **RSVP Backend** — SQLite-powered storage via Node's built-in `node:sqlite`
+- **Available Slots** — Owner sets available dates & times; users pick from free slots
+- **Admin Dashboard** — Manage slots, view bookings
+- **RSVP Backend** — PostgreSQL via Supabase
 - **Confetti** — Celebratory burst on confirmation
 
 ## Tech Stack
@@ -18,93 +19,127 @@ A kawaii-themed interactive dating proposal site. Ask someone out with style —
 | Frontend | Svelte 5 + TypeScript + Vite |
 | Styling | Tailwind CSS v4 |
 | Animations | GSAP, canvas-confetti |
-| Backend | Express 5 |
-| Database | SQLite (`node:sqlite`, Node 22.5+) |
-| Container | Docker |
-| Reverse Proxy | Traefik |
+| Backend | Express 5 (dev) / Vercel Functions (prod) |
+| Database | PostgreSQL via Supabase |
+| Deployment | Vercel + Supabase |
 
-## Development
+## Setup
+
+### 1. Supabase
+
+Create a Supabase project and run the migration in `supabase/migrations/001_initial.sql` via the SQL editor.
+
+### 2. Environment
+
+Copy `.env.example` to `.env` and fill in your Supabase credentials and an admin password:
+
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_KEY=service_role_key_here
+ADMIN_SECRET=choose-a-secure-password
+```
+
+### 3. Development
 
 ```bash
-# Install dependencies
 npm install
-
-# Start dev mode (Vite + server with hot reload)
 npm run dev
 ```
 
-Vite proxies `/api` requests to the Express server at `localhost:3001`.
+Vite proxies `/api` requests to the Express server at `localhost:3001`. The Express server loads `.env` via dotenv automatically.
 
-## Production
+### 4. Admin
 
-```bash
-# Build frontend
-npm run build
+Visit `/admin` (click the tiny ✦ at the bottom of the ask page) and log in with your `ADMIN_SECRET`. Add available date/time slots from the dashboard.
 
-# Start production server
-NODE_ENV=production npm start
-```
+## Deployment (Vercel + Supabase)
 
-The server serves the built frontend from `dist/` and handles API routes.
+### Vercel
 
-## Docker
+1. Push to GitHub
+2. Import repo to Vercel
+3. Set build command: `npm run build`
+4. Set output directory: `dist`
+5. Add env vars in Vercel dashboard:
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_KEY`
+   - `ADMIN_SECRET`
+6. Deploy
 
-```bash
-docker build -t date-me-page .
-docker run -p 3001:3001 -v date-me-data:/app/data date-me-page
-```
-
-### Docker Compose
-
-```yaml
-date-me-page:
-  container_name: date-me-page
-  build:
-    context: .
-    dockerfile: Dockerfile
-  restart: unless-stopped
-  volumes:
-    - date-me-data:/app/data
-  labels:
-    - traefik.enable=true
-    - traefik.http.routers.date-me-page.rule=Host(`date.example.com`)
-    - traefik.http.routers.date-me-page.entrypoints=websecure
-    - traefik.http.routers.date-me-page.tls=true
-    - traefik.http.routers.date-me-page.tls.certresolver=le
-    - traefik.http.services.date-me-page.loadbalancer.server.port=3001
-    - traefik.http.routers.date-me-page-web.rule=Host(`date.example.com`)
-    - traefik.http.routers.date-me-page-web.entrypoints=web
-    - traefik.http.middlewares.date-me-page-redirect-web-secure.redirectscheme.scheme=https
-    - traefik.http.routers.date-me-page-web.middlewares=date-me-page-redirect-web-secure
-```
+The `vercel.json` handles SPA rewrites and asset caching.
 
 ## API
 
-### `POST /api/rsvp`
+### `GET /api/available-slots`
 
-Create an RSVP entry.
+Returns free slots grouped by date.
+
+### `POST /api/booking`
+
+Book a time slot.
 
 ```json
 {
+  "slot_id": "uuid",
   "name": "string",
-  "activity": "park | bar | restaurant | museum",
+  "activity": "park | bar | restaurant | museum"
+}
+```
+
+### `POST /api/admin/verify`
+
+Authenticate as admin.
+
+```json
+{
+  "password": "string"
+}
+```
+
+### `GET /api/admin/slots` (auth required)
+
+View all slots with booking status.
+
+### `POST /api/admin/slots` (auth required)
+
+Create a new available slot.
+
+```json
+{
   "date": "YYYY-MM-DD",
   "time_start": "HH:mm",
   "time_end": "HH:mm"
 }
 ```
 
+### `GET /api/admin/bookings` (auth required)
+
+View all bookings.
+
 ## Project Structure
 
 ```
+├── api/                    # Vercel Functions (production backend)
+│   ├── _supabase.js        # Shared Supabase client
+│   ├── available-slots.js  # GET /api/available-slots
+│   ├── booking.js          # POST /api/booking
+│   └── admin/
+│       ├── verify.js       # POST /api/admin/verify
+│       ├── slots.js        # GET+POST /api/admin/slots
+│       └── bookings.js     # GET /api/admin/bookings
 ├── server/
-│   └── index.js          # Express 5 backend
+│   └── index.js            # Express dev server (local development)
 ├── src/
-│   ├── App.svelte        # Main app (all pages + logic)
-│   ├── app.css           # Global styles (kawaii theme)
-│   └── main.ts           # Svelte mount point
-├── data/                 # SQLite database (gitignored)
-├── dist/                 # Built frontend assets
+│   ├── App.svelte          # Main app (all pages + flee logic)
+│   ├── Admin.svelte        # Admin dashboard component
+│   ├── app.css             # Global styles (kawaii theme)
+│   ├── main.ts             # Svelte mount point
+│   └── lib/
+│       └── types.ts        # Shared TypeScript types
+├── supabase/migrations/    # Database schema
+├── dist/                   # Built frontend assets
+├── vercel.json             # Vercel deployment config
+├── .env.example
 ├── Dockerfile
 ├── vite.config.ts
 └── package.json

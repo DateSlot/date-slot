@@ -25,3 +25,6 @@ dist-ssr
 
 # SQLite data
 data/
+
+# Environment
+.env

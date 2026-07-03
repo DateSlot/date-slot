@@ -2,10 +2,12 @@
 import { gsap } from "gsap";
 import { onMount } from "svelte";
 import confetti from "canvas-confetti";
+import Admin from "./Admin.svelte";
+import type { AvailableSlot, SlotsByDate } from "./lib/types.ts";
 
-let page: "ask" | "options" | "when" | "done" = $state("ask");
+let page: "ask" | "options" | "when" | "done" | "admin" = $state("ask");
 
-let noBtn: HTMLElement;
+let noBtn: HTMLElement = $state() as unknown as HTMLElement;
 let tx = 0;
 let ty = 0;
 let panic = 0.3;
@@ -15,14 +17,17 @@ let returning = false;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let slowTween: gsap.core.Tween | null = null;
 
-let selected: string | null = null;
-let chosenDate: string = $state("");
-let chosenName: string = $state("");
-let timeStart: string = $state("18:00");
-let timeEnd: string = $state("21:00");
+let selected: string | null = $state(null);
+
+let slotsByDate: SlotsByDate = $state({});
+let availableDates: string[] = $state([]);
+let selectedDate: string = $state("");
+let selectedSlot: AvailableSlot | null = $state(null);
+let bookingName: string = $state("");
+let slotLoading = $state(false);
+let slotError = $state("");
 let submitting = $state(false);
 let submitError = $state("");
-let submitted = $state(false);
 
 onMount(() => {
   ready = true;
@@ -135,26 +140,54 @@ const options = [
 function pick(opt: typeof options[number]) {
   selected = opt.id;
   page = "when";
+  loadSlots();
 }
 
-async function confirmDate() {
-  if (!chosenName.trim() || !chosenDate) return;
+async function loadSlots() {
+  slotLoading = true;
+  slotError = "";
+  selectedDate = "";
+  selectedSlot = null;
+  try {
+    const res = await fetch("/api/available-slots");
+    if (!res.ok) throw new Error("Failed to load slots");
+    slotsByDate = await res.json();
+    availableDates = Object.keys(slotsByDate).sort();
+    if (availableDates.length > 0) {
+      selectedDate = availableDates[0];
+    }
+  } catch {
+    slotError = "Couldn't load available dates 💔";
+  } finally {
+    slotLoading = false;
+  }
+}
+
+function selectSlot(slot: AvailableSlot) {
+  selectedSlot = selectedSlot?.id === slot.id ? null : slot;
+}
+
+async function confirmBooking() {
+  if (!selectedSlot || !bookingName.trim()) return;
   submitting = true;
   submitError = "";
   try {
-    const res = await fetch("/api/rsvp", {
+    const res = await fetch("/api/booking", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: chosenName.trim(),
+        slot_id: selectedSlot.id,
+        name: bookingName.trim(),
         activity: selected,
-        date: chosenDate,
-        time_start: timeStart,
-        time_end: timeEnd,
       }),
     });
-    if (!res.ok) throw new Error("Failed to save");
-    submitted = true;
+    if (res.status === 409) {
+      submitError = "That slot was just taken! Pick another 💕";
+      selectedSlot = null;
+      loadSlots();
+      return;
+    }
+    if (!res.ok) throw new Error("Failed to book");
     page = "done";
     confetti({
       particleCount: 120,
@@ -162,7 +195,7 @@ async function confirmDate() {
       origin: { y: 0.6 },
       colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"],
     });
-  } catch (e) {
+  } catch {
     submitError = "Something went wrong, but let's still go! 💖";
     page = "done";
     confetti({
@@ -176,12 +209,14 @@ async function confirmDate() {
   }
 }
 
-function formatDate(dateStr: string) {
-  if (!dateStr) return "";
-  const d = new Date(dateStr + "T12:00:00");
-  return d.toLocaleDateString("en-US", {
+function fmtDate(d: string) {
+  return new Date(d + "T12:00:00").toLocaleDateString("en-US", {
     weekday: "long", month: "long", day: "numeric"
   });
+}
+
+function fmtTime(t: string) {
+  return t?.slice(0, 5) ?? "";
 }
 
 function sayYes() {
@@ -206,6 +241,7 @@ function sayYes() {
       <button class="btn yes" onclick={sayYes}>Yes 💖</button>
       <button bind:this={noBtn} class="btn no">No 💔</button>
     </div>
+    <button class="admin-link" onclick={() => page = "admin"}>✦</button>
   </div>
 {:else if page === "options"}
   <div class="card">
@@ -233,44 +269,76 @@ function sayYes() {
         {/if}
       {/each}
     </p>
-    <div class="form">
-      <div class="field">
-        <label class="field-label" for="name">Your name</label>
-        <input id="name" type="text" bind:value={chosenName} class="text-input" placeholder="e.g. Kuromi~" />
-      </div>
-      <div class="field">
-        <label class="field-label" for="date">Date</label>
-        <input id="date" type="date" bind:value={chosenDate} class="text-input" min={new Date().toISOString().split("T")[0]} />
-        {#if chosenDate}
-          <p class="date-label">{formatDate(chosenDate)}</p>
+
+    {#if slotLoading}
+      <p class="sub">Loading available dates...</p>
+    {:else if slotError}
+      <p class="form-error">{slotError}</p>
+    {:else if availableDates.length === 0}
+      <p class="sub">No available dates right now. Check back soon! 💕</p>
+    {:else}
+      <div class="slot-picker">
+        <div class="dates-row">
+          {#each availableDates as date}
+            <button
+              class="date-chip"
+              class:active={date === selectedDate}
+              onclick={() => { selectedDate = date; selectedSlot = null; }}
+            >
+              {new Date(date + "T12:00:00").toLocaleDateString("en-US", {
+                weekday: "short", month: "short", day: "numeric"
+              })}
+            </button>
+          {/each}
+        </div>
+
+        {#if selectedDate}
+          <p class="date-label">{fmtDate(selectedDate)}</p>
+          <div class="slots-row">
+            {#each slotsByDate[selectedDate] as slot}
+              <button
+                class="slot-btn"
+                class:active={selectedSlot?.id === slot.id}
+                onclick={() => selectSlot(slot)}
+              >
+                🕐 {fmtTime(slot.time_start)} – {fmtTime(slot.time_end)}
+              </button>
+            {/each}
+          </div>
+        {/if}
+
+        {#if selectedSlot}
+          <div class="form">
+            <div class="field">
+              <label class="field-label" for="name">Your name</label>
+              <input
+                id="name"
+                type="text"
+                bind:value={bookingName}
+                class="text-input"
+                placeholder="e.g. Kuromi~"
+                onkeydown={(e) => e.key === "Enter" && confirmBooking()}
+              />
+            </div>
+            {#if submitError}
+              <p class="form-error">{submitError}</p>
+            {/if}
+            <button
+              class="btn confirm"
+              disabled={!bookingName.trim() || submitting}
+              onclick={confirmBooking}
+            >{submitting ? "Booking..." : "Let's go! 💖"}</button>
+          </div>
         {/if}
       </div>
-      <div class="field-row">
-        <div class="field">
-          <label class="field-label" for="time-start">From</label>
-          <input id="time-start" type="time" bind:value={timeStart} class="text-input" />
-        </div>
-        <div class="field">
-          <label class="field-label" for="time-end">To</label>
-          <input id="time-end" type="time" bind:value={timeEnd} class="text-input" />
-        </div>
-      </div>
-      {#if submitError}
-        <p class="form-error">{submitError}</p>
-      {/if}
-      <button
-        class="btn confirm"
-        disabled={!chosenName.trim() || !chosenDate || submitting}
-        onclick={confirmDate}
-      >{submitting ? "Saving..." : "Let's go! 💖"}</button>
-    </div>
+    {/if}
   </div>
 {:else if page === "done"}
   <div class="card done-card">
     <div class="deco">✧  ♡  ★  ♡  ✧</div>
     <h1>It's a date! 💕</h1>
     <p class="sub">
-      {chosenName}
+      {bookingName}
       {#each options as opt}
         {#if opt.id === selected}
           &nbsp;💖&nbsp; {opt.emoji} {opt.title}
@@ -278,12 +346,14 @@ function sayYes() {
       {/each}
     </p>
     <p class="sub">
-      📅 {formatDate(chosenDate)}
-      <br>🕐 {timeStart} – {timeEnd}
+      📅 {selectedSlot ? fmtDate(selectedSlot.date) : ""}
+      <br>🕐 {selectedSlot ? fmtTime(selectedSlot.time_start) + " – " + fmtTime(selectedSlot.time_end) : ""}
     </p>
     <p class="big-emoji">🎉</p>
     <p class="sub">Can't wait! See you soon~ 💖</p>
   </div>
+{:else if page === "admin"}
+  <Admin />
 {/if}
 
 <style>
@@ -435,11 +505,6 @@ function sayYes() {
     flex: 1;
   }
 
-  .field-row {
-    display: flex;
-    gap: 12px;
-  }
-
   .field-label {
     font-size: 14px;
     font-weight: 500;
@@ -511,5 +576,94 @@ function sayYes() {
   .confirm:disabled {
     opacity: 0.4;
     cursor: default;
+  }
+
+  .admin-link {
+    font-family: "Fredoka", sans-serif;
+    font-size: 14px;
+    color: var(--pink-light);
+    background: none;
+    border: none;
+    cursor: pointer;
+    margin-top: 24px;
+    padding: 4px 8px;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+  }
+
+  .admin-link:hover {
+    opacity: 1;
+  }
+
+  .slot-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .dates-row {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+
+  .date-chip {
+    font-family: "Fredoka", sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 10px 18px;
+    border: 2px solid var(--pink-light);
+    border-radius: 20px;
+    background: white;
+    color: var(--text-light);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+
+  .date-chip:hover {
+    border-color: var(--pink);
+    background: var(--pink-pale);
+  }
+
+  .date-chip.active {
+    background: linear-gradient(135deg, var(--pink), var(--purple-light));
+    color: white;
+    border-color: transparent;
+  }
+
+  .slots-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .slot-btn {
+    font-family: "Fredoka", sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    padding: 12px 20px;
+    border: 2px solid var(--pink-light);
+    border-radius: 16px;
+    background: white;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .slot-btn:hover {
+    border-color: var(--purple);
+    background: var(--pink-pale);
+  }
+
+  .slot-btn.active {
+    background: linear-gradient(135deg, var(--pink), var(--purple-light));
+    color: white;
+    border-color: transparent;
+    box-shadow: 0 4px 16px rgba(200, 120, 180, 0.3);
   }
 </style>
