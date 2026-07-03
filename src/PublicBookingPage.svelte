@@ -106,7 +106,7 @@ function fmtTime(t: string) {
     <p class="sub">See you then~ 💖</p>
     <p class="big-emoji">💕</p>
   {:else}
-    <h1>Book a slot with {displayName} 💕</h1>
+    <h1>Book {displayName} 💕</h1>
     <p class="sub">Pick a time that works for you</p>
 
     {#if availableDates.length === 0}
@@ -168,6 +168,9 @@ function fmtTime(t: string) {
       </div>
     {/if}
   {/if}
+  <nav class="page-footer">
+    <a href="/u/{username}/edit" class="edit-link">Manage your slots 🔐</a>
+  </nav>
 </div>
 
 <style>
@@ -338,5 +341,24 @@ function fmtTime(t: string) {
     color: white;
     border-color: transparent;
     box-shadow: 0 4px 16px rgba(200, 120, 180, 0.3);
+  }
+
+  .page-footer {
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid var(--pink-pale);
+  }
+
+  .edit-link {
+    font-family: "Fredoka", sans-serif;
+    font-size: 13px;
+    color: var(--text-light);
+    text-decoration: none;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+  }
+
+  .edit-link:hover {
+    opacity: 1;
   }
 </style>
