@@ -32,6 +32,13 @@ let slotLoading = $state(false);
 let slotError = $state("");
 let submitting = $state(false);
 let submitError = $state("");
+let manageUsername = $state("");
+
+function goToManage() {
+  if (manageUsername.trim()) {
+    window.location.href = `/u/${manageUsername.trim().toLowerCase()}/edit`;
+  }
+}
 
 onMount(() => {
   ready = true;
@@ -268,8 +275,16 @@ function sayYes() {
       <button bind:this={noBtn} class="btn no">No 💔</button>
     </div>
     <nav class="bottom-nav">
-      <a href="/create" class="nav-link">Create your booking page ✨</a>
-      <button class="admin-link" onclick={() => page = "admin"}>✦</button>
+      <div class="nav-row">
+        <a href="/create" class="nav-link">Create your booking page ✨</a>
+        <button class="admin-link" onclick={() => page = "admin"}>✦</button>
+      </div>
+      <div class="nav-row manage-row">
+        <span class="manage-label">Already have a page?</span>
+        <input type="text" class="manage-input" placeholder="your-username" bind:value={manageUsername}
+          onkeydown={(e) => e.key === "Enter" && goToManage()} />
+        <button class="manage-go" onclick={goToManage} disabled={!manageUsername.trim()}>Manage</button>
+      </div>
     </nav>
   </div>
 {:else if page === "options"}
@@ -618,10 +633,71 @@ function sayYes() {
 
   .bottom-nav {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
     gap: 12px;
     margin-top: 24px;
+  }
+
+  .nav-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .manage-row {
+    background: var(--pink-pale);
+    padding: 10px 16px;
+    border-radius: 20px;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .manage-label {
+    font-size: 14px;
+    color: var(--text-light);
+  }
+
+  .manage-input {
+    font-family: "Fredoka", sans-serif;
+    font-size: 14px;
+    padding: 8px 14px;
+    border: 2px solid var(--pink-light);
+    border-radius: 14px;
+    background: white;
+    color: var(--text);
+    width: 160px;
+    outline: none;
+    transition: border-color 0.15s;
+    box-sizing: border-box;
+  }
+
+  .manage-input:focus {
+    border-color: var(--purple);
+  }
+
+  .manage-go {
+    font-family: "Fredoka", sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 18px;
+    border: none;
+    border-radius: 60px;
+    background: linear-gradient(135deg, var(--pink), var(--purple-light));
+    color: white;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.15s;
+    white-space: nowrap;
+  }
+
+  .manage-go:hover:not(:disabled) {
+    transform: scale(1.06);
+  }
+
+  .manage-go:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 
   .nav-link {

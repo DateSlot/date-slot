@@ -106,7 +106,10 @@ function fmtTime(t: string) {
     <p class="sub">See you then~ 💖</p>
     <p class="big-emoji">💕</p>
   {:else}
-    <h1>Book {displayName} 💕</h1>
+    <div class="page-head">
+      <h1>Book {displayName} 💕</h1>
+      <a href="/u/{username}/edit" class="manage-btn">Manage 🔐</a>
+    </div>
     <p class="sub">Pick a time that works for you</p>
 
     {#if availableDates.length === 0}
@@ -168,9 +171,6 @@ function fmtTime(t: string) {
       </div>
     {/if}
   {/if}
-  <nav class="page-footer">
-    <a href="/u/{username}/edit" class="edit-link">Manage your slots 🔐</a>
-  </nav>
 </div>
 
 <style>
@@ -343,22 +343,30 @@ function fmtTime(t: string) {
     box-shadow: 0 4px 16px rgba(200, 120, 180, 0.3);
   }
 
-  .page-footer {
-    margin-top: 32px;
-    padding-top: 16px;
-    border-top: 1px solid var(--pink-pale);
+  .page-head {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
   }
 
-  .edit-link {
+  .manage-btn {
     font-family: "Fredoka", sans-serif;
     font-size: 13px;
-    color: var(--text-light);
+    font-weight: 500;
+    color: var(--purple);
+    background: var(--pink-pale);
     text-decoration: none;
-    opacity: 0.6;
-    transition: opacity 0.15s;
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 2px solid var(--purple-light);
+    transition: all 0.15s;
+    white-space: nowrap;
   }
 
-  .edit-link:hover {
-    opacity: 1;
+  .manage-btn:hover {
+    background: var(--purple-light);
+    color: white;
   }
 </style>
