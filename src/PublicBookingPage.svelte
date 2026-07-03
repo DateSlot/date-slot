@@ -1,25 +1,157 @@
 <script lang="ts">
+import { gsap } from "gsap";
 import { onMount } from "svelte";
 import confetti from "canvas-confetti";
-import type { SlotsByDate, AvailableSlot } from "./lib/types.ts";
+import type { AvailableSlot, SlotsByDate } from "./lib/types.ts";
 import { ACTIVITY_OPTIONS, CUSTOM_ACTIVITY } from "./lib/types.ts";
 
 let { username }: { username: string } = $props();
 
+type Step = "ask" | "options" | "when" | "done";
+let step: Step = $state("ask");
+
 let displayName = $state("");
 let likes = $state("");
+let loading = $state(false);
+let error = $state("");
+
+/* ---- No button flee ---- */
+let noBtn: HTMLElement = $state() as unknown as HTMLElement;
+let tx = 0;
+let ty = 0;
+let panic = 0.3;
+let returning = false;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+let slowTween: gsap.core.Tween | null = null;
+let isTouch = false;
+
+function cancelSlow() {
+  if (slowTween) {
+    slowTween.kill();
+    slowTween = null;
+    tx = gsap.getProperty(noBtn, "x") as number;
+    ty = gsap.getProperty(noBtn, "y") as number;
+  }
+}
+
+function returnHome(speed: "fast" | "slow") {
+  if (speed === "fast") {
+    returning = true;
+    gsap.killTweensOf(noBtn);
+    gsap.to(noBtn, {
+      x: 0, y: 0, scale: 1,
+      duration: 0.6, ease: "power2.out",
+      onComplete: () => { returning = false; }
+    });
+    tx = 0;
+    ty = 0;
+  } else {
+    slowTween = gsap.to(noBtn, {
+      x: 0, y: 0, scale: 1,
+      duration: 2.5, ease: "power1.out",
+      onComplete: () => { slowTween = null; }
+    });
+    tx = 0;
+    ty = 0;
+  }
+}
+
+function handlePointer(clientX: number, clientY: number) {
+  if (!noBtn) return;
+  if (isTouch) return;
+
+  cancelSlow();
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+
+  const r = noBtn.getBoundingClientRect();
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+
+  const dx = cx - clientX;
+  const dy = cy - clientY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (!returning && dist > 0 && dist < 200) {
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const t = 1 - dist / 200;
+    const strength = t * t * t * panic * 400;
+
+    let newTx = tx + strength * nx;
+    let newTy = ty + strength * ny;
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const btnW = r.width;
+    const btnH = r.height;
+    const margin = 20;
+    const origLeft = r.left - (tx || 0);
+    const origTop = r.top - (ty || 0);
+    const maxLeft = origLeft + newTx;
+    const maxTop = origTop + newTy;
+
+    if (maxLeft < margin) newTx = tx + (margin - origLeft);
+    if (maxLeft + btnW > vw - margin) newTx = tx + (vw - margin - btnW - origLeft);
+    if (maxTop < margin) newTy = ty + (margin - origTop);
+    if (maxTop + btnH > vh - margin) newTy = ty + (vh - margin - btnH - origTop);
+
+    gsap.killTweensOf(noBtn);
+    gsap.to(noBtn, {
+      x: newTx, y: newTy, scale: 0.85,
+      duration: 0.07, ease: "power2.out", overwrite: "auto"
+    });
+    tx = newTx;
+    ty = newTy;
+    panic = Math.max(0.15, panic * 0.94);
+  }
+
+  if (!returning && (tx !== 0 || ty !== 0)) {
+    idleTimer = setTimeout(() => {
+      if (!returning && (tx !== 0 || ty !== 0)) {
+        returnHome("slow");
+      }
+    }, 800);
+  }
+}
+
+function handlePointerLeave() {
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+  cancelSlow();
+  if (!returning && (tx !== 0 || ty !== 0)) {
+    returnHome("slow");
+  }
+}
+
+function handleTouchStart(e: TouchEvent) {
+  isTouch = true;
+  const t = e.touches[0];
+  handlePointer(t.clientX, t.clientY);
+}
+
+function handleTouchMove(e: TouchEvent) {
+  isTouch = true;
+  const t = e.touches[0];
+  handlePointer(t.clientX, t.clientY);
+}
+
+/* ---- slots & booking ---- */
 let slotsByDate: SlotsByDate = $state({});
 let availableDates: string[] = $state([]);
-let selectedDate = $state("");
+let selectedDate: string = $state("");
 let selectedSlot: AvailableSlot | null = $state(null);
-let bookerName = $state("");
-let bookerActivity = $state("");
-let bookerCustomActivity = $state("");
-let loading = $state(true);
-let error = $state("");
+let selected: string | null = $state(null);
+let bookingName: string = $state("");
+let slotLoading = $state(false);
+let slotError = $state("");
 let submitting = $state(false);
 let submitError = $state("");
-let booked = $state(false);
+
+const options = [
+  { id: "park", emoji: "🌳", title: "Walk in the Park", desc: "A lovely stroll under the trees" },
+  { id: "bar", emoji: "🍸", title: "Bar", desc: "Drinks with a view" },
+  { id: "restaurant", emoji: "🍽️", title: "Restaurant", desc: "A cozy dinner for two" },
+  { id: "museum", emoji: "🏛️", title: "Museum", desc: "Get cultured together" },
+] as const;
 
 onMount(async () => {
   await loadProfile();
@@ -37,11 +169,6 @@ async function loadProfile() {
     }
     displayName = data.profile.display_name;
     likes = data.profile.likes || "";
-    slotsByDate = data.slots || {};
-    availableDates = Object.keys(slotsByDate).sort();
-    if (availableDates.length > 0) {
-      selectedDate = availableDates[0];
-    }
   } catch {
     error = "Could not load profile";
   } finally {
@@ -49,41 +176,69 @@ async function loadProfile() {
   }
 }
 
-function selectSlot(slot: AvailableSlot) {
-  selectedSlot = selectedSlot?.id === slot.id ? null : slot;
-  bookerActivity = "";
-  bookerCustomActivity = "";
+function sayYes() {
+  step = "options";
+  confetti({
+    particleCount: 80,
+    spread: 70,
+    origin: { y: 0.6 },
+    colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"],
+  });
 }
 
-async function book() {
-  if (!selectedSlot || !bookerName.trim()) return;
+function pick(opt: typeof options[number]) {
+  selected = opt.id;
+  step = "when";
+  loadSlots();
+}
+
+async function loadSlots() {
+  slotLoading = true;
+  slotError = "";
+  selectedDate = "";
+  selectedSlot = null;
+  try {
+    const res = await fetch(`/api/public-profile?username=${encodeURIComponent(username)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error("Failed to load slots");
+    slotsByDate = data.slots || {};
+    availableDates = Object.keys(slotsByDate).sort();
+    if (availableDates.length > 0) {
+      selectedDate = availableDates[0];
+    }
+  } catch {
+    slotError = "Couldn't load available dates 💔";
+  } finally {
+    slotLoading = false;
+  }
+}
+
+function selectSlot(slot: AvailableSlot) {
+  selectedSlot = selectedSlot?.id === slot.id ? null : slot;
+}
+
+async function confirmBooking() {
+  if (!selectedSlot || !bookingName.trim()) return;
   submitting = true;
   submitError = "";
   try {
-    const body: Record<string, string> = {
-      slot_id: selectedSlot.id,
-      name: bookerName.trim(),
-    };
-
-    if (!selectedSlot.activity) {
-      body.activity = bookerActivity === CUSTOM_ACTIVITY
-        ? bookerCustomActivity.trim()
-        : bookerActivity;
-    }
-
     const res = await fetch("/api/booking", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        slot_id: selectedSlot.id,
+        name: bookingName.trim(),
+        activity: selected,
+      }),
     });
     if (res.status === 409) {
       submitError = "That slot was just taken! Pick another 💕";
       selectedSlot = null;
-      loadProfile();
+      loadSlots();
       return;
     }
     if (!res.ok) throw new Error("Failed to book");
-    booked = true;
+    step = "done";
     confetti({
       particleCount: 120,
       spread: 80,
@@ -91,7 +246,14 @@ async function book() {
       colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"],
     });
   } catch {
-    submitError = "Something went wrong 💔";
+    submitError = "Something went wrong, but let's still go! 💖";
+    step = "done";
+    confetti({
+      particleCount: 80,
+      spread: 70,
+      origin: { y: 0.6 },
+      colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"],
+    });
   } finally {
     submitting = false;
   }
@@ -106,42 +268,72 @@ function fmtDate(d: string) {
 function fmtTime(t: string) {
   return t?.slice(0, 5) ?? "";
 }
-
-function slotLabel(slot: AvailableSlot) {
-  if (!slot.activity) return "";
-  const opt = ACTIVITY_OPTIONS.find((o) => o.id === slot.activity);
-  return opt ? `${opt.emoji} ${opt.title}` : `💫 ${slot.activity}`;
-}
 </script>
 
-<div class="card">
-  <div class="deco">✧  ♡  ★  ♡  ✧</div>
+<svelte:window
+  onmousemove={(e) => handlePointer(e.clientX, e.clientY)}
+  onmouseleave={handlePointerLeave}
+  ontouchstart={handleTouchStart}
+  ontouchmove={handleTouchMove}
+/>
 
-  {#if loading}
+{#if loading}
+  <div class="card">
+    <div class="deco">✧  ♡  ★  ♡  ✧</div>
     <p class="sub">Loading...</p>
-  {:else if error}
+  </div>
+{:else if error}
+  <div class="card">
+    <div class="deco">✧  ♡  ★  ♡  ✧</div>
     <h1>Oops! 💔</h1>
     <p class="sub">{error}</p>
-  {:else if booked}
-    <h1>Booked! 🎉</h1>
-    <p class="sub">See you then~ 💖</p>
-    <p class="big-emoji">💕</p>
-  {:else}
-    <div class="page-head">
-      <h1>Book {displayName} 💕</h1>
-      <a href="/u/{username}/edit" class="manage-btn">Manage 🔐</a>
-    </div>
-
+  </div>
+{:else if step === "ask"}
+  <div class="card">
+    <div class="deco">✿  ♡  ☆  ♡  ✿</div>
+    <h1>Will you go<br>on a date with me?</h1>
+    <p class="sub">— {displayName} 💕</p>
     {#if likes}
-      <div class="likes-section">
-        <p class="likes-text">💖 {likes}</p>
-      </div>
+      <div class="likes-section"><p class="likes-text">💖 {likes}</p></div>
     {/if}
+    <div class="buttons">
+      <button class="btn yes" onclick={sayYes}>Yes 💖</button>
+      <button bind:this={noBtn} class="btn no">No 💔</button>
+    </div>
+  </div>
+{:else if step === "options"}
+  <div class="card">
+    <div class="deco">☆  ♡  ★  ♡  ☆</div>
+    <h1>Yay! 💖<br>What should we do?</h1>
+    <p class="sub">Pick your vibe ✨</p>
+    <div class="options">
+      {#each options as opt}
+        <button class="option" onclick={() => pick(opt)}>
+          <span class="opt-emoji">{opt.emoji}</span>
+          <span class="opt-title">{opt.title}</span>
+          <span class="opt-desc">{opt.desc}</span>
+        </button>
+      {/each}
+    </div>
+  </div>
+{:else if step === "when"}
+  <div class="card">
+    <div class="deco">✧  ♡  ★  ♡  ✧</div>
+    <h1>When are you free? 📅</h1>
+    <p class="sub">
+      {#each options as opt}
+        {#if opt.id === selected}
+          {opt.emoji} {opt.title}
+        {/if}
+      {/each}
+    </p>
 
-    <p class="sub">Pick a time that works for you</p>
-
-    {#if availableDates.length === 0}
-      <p class="sub">No available slots right now. Check back soon!</p>
+    {#if slotLoading}
+      <p class="sub">Loading available dates...</p>
+    {:else if slotError}
+      <p class="form-error">{slotError}</p>
+    {:else if availableDates.length === 0}
+      <p class="sub">No available dates right now. Check back soon! 💕</p>
     {:else}
       <div class="slot-picker">
         <div class="dates-row">
@@ -169,7 +361,9 @@ function slotLabel(slot: AvailableSlot) {
               >
                 🕐 {fmtTime(slot.time_start)} – {fmtTime(slot.time_end)}
                 {#if slot.activity}
-                  <br><span class="slot-activity">{slotLabel(slot)}</span>
+                  <br><span class="slot-activity">{
+                    ACTIVITY_OPTIONS.find(o => o.id === slot.activity)?.emoji + " " + ACTIVITY_OPTIONS.find(o => o.id === slot.activity)?.title ?? slot.activity
+                  }</span>
                 {/if}
               </button>
             {/each}
@@ -183,66 +377,68 @@ function slotLabel(slot: AvailableSlot) {
               <input
                 id="name"
                 type="text"
-                bind:value={bookerName}
+                bind:value={bookingName}
                 class="text-input"
-                placeholder="e.g. your name"
-                onkeydown={(e) => e.key === "Enter" && book()}
+                placeholder="e.g. Kuromi~"
+                onkeydown={(e) => e.key === "Enter" && confirmBooking()}
               />
             </div>
-
-            {#if !selectedSlot.activity}
-              <div class="field">
-                <p class="field-label">Pick an activity</p>
-                <div class="activity-options">
-                  <button class="activity-opt" class:active={bookerActivity === ""} onclick={() => { bookerActivity = ""; bookerCustomActivity = ""; }}>
-                    Surprise me 🎲
-                  </button>
-                  {#each ACTIVITY_OPTIONS as opt}
-                    <button class="activity-opt" class:active={bookerActivity === opt.id} onclick={() => { bookerActivity = opt.id; bookerCustomActivity = ""; }}>
-                      {opt.emoji} {opt.title}
-                    </button>
-                  {/each}
-                  <button class="activity-opt" class:active={bookerActivity === CUSTOM_ACTIVITY} onclick={() => bookerActivity = CUSTOM_ACTIVITY}>
-                    ✏️ Custom
-                  </button>
-                </div>
-                {#if bookerActivity === CUSTOM_ACTIVITY}
-                  <input type="text" bind:value={bookerCustomActivity} class="text-input" placeholder="e.g. Bowling 🎳" style="margin-top:8px" />
-                {/if}
-              </div>
-            {/if}
-
             {#if submitError}
               <p class="form-error">{submitError}</p>
             {/if}
             <button
               class="btn confirm"
-              disabled={!bookerName.trim() || submitting}
-              onclick={book}
-            >{submitting ? "Booking..." : "Book 💖"}</button>
+              disabled={!bookingName.trim() || submitting}
+              onclick={confirmBooking}
+            >{submitting ? "Booking..." : "Let's go! 💖"}</button>
           </div>
         {/if}
       </div>
     {/if}
-  {/if}
-</div>
+  </div>
+{:else if step === "done"}
+  <div class="card done-card">
+    <div class="deco">✧  ♡  ★  ♡  ✧</div>
+    <h1>It's a date! 💕</h1>
+    <p class="sub">
+      {bookingName}
+      {#each options as opt}
+        {#if opt.id === selected}
+          &nbsp;💖&nbsp; {opt.emoji} {opt.title}
+        {/if}
+      {/each}
+    </p>
+    <p class="sub">
+      📅 {selectedSlot ? fmtDate(selectedSlot.date) : ""}
+      <br>🕐 {selectedSlot ? fmtTime(selectedSlot.time_start) + " – " + fmtTime(selectedSlot.time_end) : ""}
+    </p>
+    <p class="big-emoji">🎉</p>
+    <p class="sub">Can't wait! See you soon~ 💖</p>
+  </div>
+{/if}
+
+{#if step !== "ask"}
+  <a href="/u/{username}/edit" class="manage-edit-link">Manage 🔐</a>
+{/if}
 
 <style>
   .card {
     background: var(--white);
     border-radius: 32px;
     padding: 48px 40px 40px;
-    max-width: 480px;
+    max-width: 440px;
     width: 100%;
     text-align: center;
     box-shadow: 0 8px 32px var(--shadow);
   }
+
   .deco {
     font-size: 20px;
     letter-spacing: 8px;
     color: var(--pink-light);
     margin-bottom: 8px;
   }
+
   h1 {
     font-family: "Fredoka", sans-serif;
     font-weight: 600;
@@ -251,33 +447,138 @@ function slotLabel(slot: AvailableSlot) {
     margin: 0 0 8px;
     line-height: 1.3;
   }
+
   .sub {
     font-size: 16px;
     color: var(--text-light);
     margin: 0 0 32px;
   }
+
   .big-emoji {
     font-size: 64px;
-    margin: 0;
+    margin: 0 0 8px;
     line-height: 1;
   }
+
+  .buttons {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    align-items: center;
+  }
+
+  .btn {
+    font-family: "Fredoka", sans-serif;
+    font-size: 18px;
+    font-weight: 500;
+    padding: 12px 36px;
+    border: none;
+    border-radius: 60px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .yes {
+    background: linear-gradient(135deg, var(--pink), var(--purple-light));
+    color: white;
+    box-shadow: 0 4px 16px rgba(200, 120, 180, 0.3);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+
+  .yes:hover {
+    transform: scale(1.08);
+    box-shadow: 0 6px 24px rgba(200, 120, 180, 0.45);
+  }
+
+  .yes:active {
+    transform: scale(0.95);
+  }
+
+  .no {
+    border: 2px solid var(--pink-light);
+    background: white;
+    color: var(--pink);
+    touch-action: none;
+    user-select: none;
+  }
+
+  .no:hover {
+    background: var(--pink-pale);
+  }
+
+  .options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .option {
+    font-family: "Fredoka", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 20px 12px;
+    border: 2px solid var(--pink-pale);
+    border-radius: 20px;
+    background: white;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  }
+
+  .option:hover {
+    transform: scale(1.05);
+    border-color: var(--pink);
+    box-shadow: 0 4px 16px var(--shadow);
+  }
+
+  .option:active {
+    transform: scale(0.95);
+  }
+
+  .opt-emoji {
+    font-size: 36px;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .opt-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .opt-desc {
+    font-size: 12px;
+    color: var(--text-light);
+    line-height: 1.2;
+  }
+
+  .done-card {
+    padding: 56px 40px;
+  }
+
   .form {
     display: flex;
     flex-direction: column;
     gap: 20px;
   }
+
   .field {
     display: flex;
     flex-direction: column;
     gap: 6px;
     text-align: left;
+    flex: 1;
   }
+
   .field-label {
     font-size: 14px;
     font-weight: 500;
     color: var(--text-light);
     padding-left: 4px;
   }
+
   .text-input {
     font-family: "Fredoka", sans-serif;
     font-size: 18px;
@@ -291,46 +592,65 @@ function slotLabel(slot: AvailableSlot) {
     outline: none;
     transition: border-color 0.15s;
   }
+
   .text-input:focus {
     border-color: var(--purple);
   }
+
+  .text-input::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.6;
+  }
+
+  .date-label {
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--purple);
+    margin: 4px 0 0;
+    text-align: center;
+  }
+
   .form-error {
     font-size: 14px;
     color: var(--pink);
     text-align: center;
     margin: 0;
   }
-  .btn {
+
+  .confirm {
     font-family: "Fredoka", sans-serif;
     font-size: 18px;
     font-weight: 500;
     padding: 14px 48px;
     border: none;
     border-radius: 60px;
-    cursor: pointer;
-  }
-  .confirm {
     background: linear-gradient(135deg, var(--pink), var(--purple-light));
     color: white;
+    cursor: pointer;
     box-shadow: 0 4px 16px rgba(200, 120, 180, 0.3);
     transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
   }
+
   .confirm:hover:not(:disabled) {
     transform: scale(1.06);
     box-shadow: 0 6px 24px rgba(200, 120, 180, 0.45);
   }
+
   .confirm:active:not(:disabled) {
     transform: scale(0.95);
   }
+
   .confirm:disabled {
     opacity: 0.4;
     cursor: default;
   }
+
   .slot-picker {
     display: flex;
     flex-direction: column;
     gap: 16px;
   }
+
   .dates-row {
     display: flex;
     gap: 8px;
@@ -338,6 +658,7 @@ function slotLabel(slot: AvailableSlot) {
     padding-bottom: 4px;
     scrollbar-width: thin;
   }
+
   .date-chip {
     font-family: "Fredoka", sans-serif;
     font-size: 14px;
@@ -352,28 +673,25 @@ function slotLabel(slot: AvailableSlot) {
     transition: all 0.15s;
     flex-shrink: 0;
   }
+
   .date-chip:hover {
     border-color: var(--pink);
     background: var(--pink-pale);
   }
+
   .date-chip.active {
     background: linear-gradient(135deg, var(--pink), var(--purple-light));
     color: white;
     border-color: transparent;
   }
-  .date-label {
-    font-size: 20px;
-    font-weight: 500;
-    color: var(--purple);
-    margin: 0;
-    text-align: center;
-  }
+
   .slots-row {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     justify-content: center;
   }
+
   .slot-btn {
     font-family: "Fredoka", sans-serif;
     font-size: 15px;
@@ -387,54 +705,30 @@ function slotLabel(slot: AvailableSlot) {
     transition: all 0.15s;
     line-height: 1.4;
   }
+
   .slot-btn:hover {
     border-color: var(--purple);
     background: var(--pink-pale);
   }
+
   .slot-btn.active {
     background: linear-gradient(135deg, var(--pink), var(--purple-light));
     color: white;
     border-color: transparent;
     box-shadow: 0 4px 16px rgba(200, 120, 180, 0.3);
   }
+
   .slot-activity {
     font-size: 12px;
     opacity: 0.8;
-  }
-
-  .page-head {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .manage-btn {
-    font-family: "Fredoka", sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--purple);
-    background: var(--pink-pale);
-    text-decoration: none;
-    padding: 6px 14px;
-    border-radius: 20px;
-    border: 2px solid var(--purple-light);
-    transition: all 0.15s;
-    white-space: nowrap;
-  }
-
-  .manage-btn:hover {
-    background: var(--purple-light);
-    color: white;
   }
 
   .likes-section {
     background: var(--pink-pale);
     border-radius: 16px;
     padding: 12px 18px;
-    margin: 8px auto 16px;
-    max-width: 380px;
+    margin: -20px auto 28px;
+    max-width: 340px;
   }
 
   .likes-text {
@@ -444,30 +738,24 @@ function slotLabel(slot: AvailableSlot) {
     line-height: 1.5;
   }
 
-  .activity-options {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .activity-opt {
+  .manage-edit-link {
     font-family: "Fredoka", sans-serif;
     font-size: 13px;
     font-weight: 500;
+    color: var(--purple);
+    background: var(--white);
+    text-decoration: none;
     padding: 6px 14px;
-    border: 2px solid var(--purple-light);
     border-radius: 20px;
-    background: white;
-    color: var(--text);
-    cursor: pointer;
+    border: 2px solid var(--purple-light);
     transition: all 0.15s;
+    white-space: nowrap;
+    display: inline-block;
+    margin-top: 16px;
   }
-  .activity-opt:hover {
-    background: var(--pink-pale);
-  }
-  .activity-opt.active {
-    background: linear-gradient(135deg, var(--pink), var(--purple-light));
+
+  .manage-edit-link:hover {
+    background: var(--purple-light);
     color: white;
-    border-color: transparent;
   }
 </style>
