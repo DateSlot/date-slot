@@ -7,7 +7,7 @@ import { ACTIVITY_OPTIONS, CUSTOM_ACTIVITY } from "./lib/types.ts";
 
 let { username }: { username: string } = $props();
 
-type Step = "ask" | "options" | "when" | "done";
+type Step = "ask" | "when" | "done";
 let step: Step = $state("ask");
 
 let displayName = $state("");
@@ -15,7 +15,6 @@ let likes = $state("");
 let loading = $state(false);
 let error = $state("");
 
-/* ---- No button flee ---- */
 let noBtn: HTMLElement = $state() as unknown as HTMLElement;
 let tx = 0;
 let ty = 0;
@@ -87,13 +86,11 @@ function handlePointer(clientX: number, clientY: number) {
     const margin = 20;
     const origLeft = r.left - (tx || 0);
     const origTop = r.top - (ty || 0);
-    const maxLeft = origLeft + newTx;
-    const maxTop = origTop + newTy;
 
-    if (maxLeft < margin) newTx = tx + (margin - origLeft);
-    if (maxLeft + btnW > vw - margin) newTx = tx + (vw - margin - btnW - origLeft);
-    if (maxTop < margin) newTy = ty + (margin - origTop);
-    if (maxTop + btnH > vh - margin) newTy = ty + (vh - margin - btnH - origTop);
+    if (origLeft + newTx < margin) newTx = tx + (margin - origLeft);
+    if (origLeft + newTx + btnW > vw - margin) newTx = tx + (vw - margin - btnW - origLeft);
+    if (origTop + newTy < margin) newTy = ty + (margin - origTop);
+    if (origTop + newTy + btnH > vh - margin) newTy = ty + (vh - margin - btnH - origTop);
 
     gsap.killTweensOf(noBtn);
     gsap.to(noBtn, {
@@ -124,42 +121,28 @@ function handlePointerLeave() {
 
 function handleTouchStart(e: TouchEvent) {
   isTouch = true;
-  const t = e.touches[0];
-  handlePointer(t.clientX, t.clientY);
+  handlePointer(e.touches[0].clientX, e.touches[0].clientY);
 }
 
 function handleTouchMove(e: TouchEvent) {
   isTouch = true;
-  const t = e.touches[0];
-  handlePointer(t.clientX, t.clientY);
+  handlePointer(e.touches[0].clientX, e.touches[0].clientY);
 }
 
-/* ---- slots & booking ---- */
 let slotsByDate: SlotsByDate = $state({});
 let availableDates: string[] = $state([]);
 let selectedDate: string = $state("");
 let selectedSlot: AvailableSlot | null = $state(null);
-let selected: string | null = $state(null);
 let bookingName: string = $state("");
+let bookerActivity = $state("");
+let bookerCustomActivity = $state("");
 let slotLoading = $state(false);
 let slotError = $state("");
 let submitting = $state(false);
 let submitError = $state("");
 
-const options = [
-  { id: "park", emoji: "🌳", title: "Walk in the Park", desc: "A lovely stroll under the trees" },
-  { id: "bar", emoji: "🍸", title: "Bar", desc: "Drinks with a view" },
-  { id: "restaurant", emoji: "🍽️", title: "Restaurant", desc: "A cozy dinner for two" },
-  { id: "museum", emoji: "🏛️", title: "Museum", desc: "Get cultured together" },
-] as const;
-
 onMount(async () => {
-  await loadProfile();
-});
-
-async function loadProfile() {
   loading = true;
-  error = "";
   try {
     const res = await fetch(`/api/public-profile?username=${encodeURIComponent(username)}`);
     const data = await res.json();
@@ -169,15 +152,20 @@ async function loadProfile() {
     }
     displayName = data.profile.display_name;
     likes = data.profile.likes || "";
+    slotsByDate = data.slots || {};
+    availableDates = Object.keys(slotsByDate).sort();
+    if (availableDates.length > 0) {
+      selectedDate = availableDates[0];
+    }
   } catch {
     error = "Could not load profile";
   } finally {
     loading = false;
   }
-}
+});
 
 function sayYes() {
-  step = "options";
+  step = "when";
   confetti({
     particleCount: 80,
     spread: 70,
@@ -186,35 +174,10 @@ function sayYes() {
   });
 }
 
-function pick(opt: typeof options[number]) {
-  selected = opt.id;
-  step = "when";
-  loadSlots();
-}
-
-async function loadSlots() {
-  slotLoading = true;
-  slotError = "";
-  selectedDate = "";
-  selectedSlot = null;
-  try {
-    const res = await fetch(`/api/public-profile?username=${encodeURIComponent(username)}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error("Failed to load slots");
-    slotsByDate = data.slots || {};
-    availableDates = Object.keys(slotsByDate).sort();
-    if (availableDates.length > 0) {
-      selectedDate = availableDates[0];
-    }
-  } catch {
-    slotError = "Couldn't load available dates 💔";
-  } finally {
-    slotLoading = false;
-  }
-}
-
 function selectSlot(slot: AvailableSlot) {
   selectedSlot = selectedSlot?.id === slot.id ? null : slot;
+  bookerActivity = "";
+  bookerCustomActivity = "";
 }
 
 async function confirmBooking() {
@@ -222,19 +185,23 @@ async function confirmBooking() {
   submitting = true;
   submitError = "";
   try {
+    const body: Record<string, string> = {
+      slot_id: selectedSlot.id,
+      name: bookingName.trim(),
+    };
+    if (!selectedSlot.activity) {
+      body.activity = bookerActivity === CUSTOM_ACTIVITY
+        ? bookerCustomActivity.trim()
+        : bookerActivity;
+    }
     const res = await fetch("/api/booking", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        slot_id: selectedSlot.id,
-        name: bookingName.trim(),
-        activity: selected,
-      }),
+      body: JSON.stringify(body),
     });
     if (res.status === 409) {
       submitError = "That slot was just taken! Pick another 💕";
       selectedSlot = null;
-      loadSlots();
       return;
     }
     if (!res.ok) throw new Error("Failed to book");
@@ -246,7 +213,6 @@ async function confirmBooking() {
       colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"],
     });
   } catch {
-    submitError = "Something went wrong, but let's still go! 💖";
     step = "done";
     confetti({
       particleCount: 80,
@@ -267,6 +233,12 @@ function fmtDate(d: string) {
 
 function fmtTime(t: string) {
   return t?.slice(0, 5) ?? "";
+}
+
+function activityLabel(a: string | null) {
+  if (!a) return "";
+  const opt = ACTIVITY_OPTIONS.find((o) => o.id === a);
+  return opt ? `${opt.emoji} ${opt.title}` : `💫 ${a}`;
 }
 </script>
 
@@ -300,40 +272,18 @@ function fmtTime(t: string) {
       <button class="btn yes" onclick={sayYes}>Yes 💖</button>
       <button bind:this={noBtn} class="btn no">No 💔</button>
     </div>
-  </div>
-{:else if step === "options"}
-  <div class="card">
-    <div class="deco">☆  ♡  ★  ♡  ☆</div>
-    <h1>Yay! 💖<br>What should we do?</h1>
-    <p class="sub">Pick your vibe ✨</p>
-    <div class="options">
-      {#each options as opt}
-        <button class="option" onclick={() => pick(opt)}>
-          <span class="opt-emoji">{opt.emoji}</span>
-          <span class="opt-title">{opt.title}</span>
-          <span class="opt-desc">{opt.desc}</span>
-        </button>
-      {/each}
+    <div class="card-footer">
+      <a href="/u/{username}/edit" class="edit-link">Manage 🔐</a>
     </div>
   </div>
 {:else if step === "when"}
   <div class="card">
     <div class="deco">✧  ♡  ★  ♡  ✧</div>
-    <h1>When are you free? 📅</h1>
-    <p class="sub">
-      {#each options as opt}
-        {#if opt.id === selected}
-          {opt.emoji} {opt.title}
-        {/if}
-      {/each}
-    </p>
+    <h1>Pick a time 📅</h1>
+    <p class="sub">— {displayName} 💕</p>
 
-    {#if slotLoading}
-      <p class="sub">Loading available dates...</p>
-    {:else if slotError}
-      <p class="form-error">{slotError}</p>
-    {:else if availableDates.length === 0}
-      <p class="sub">No available dates right now. Check back soon! 💕</p>
+    {#if availableDates.length === 0}
+      <p class="sub">No available slots right now. Check back soon! 💕</p>
     {:else}
       <div class="slot-picker">
         <div class="dates-row">
@@ -361,9 +311,7 @@ function fmtTime(t: string) {
               >
                 🕐 {fmtTime(slot.time_start)} – {fmtTime(slot.time_end)}
                 {#if slot.activity}
-                  <br><span class="slot-activity">{
-                    ACTIVITY_OPTIONS.find(o => o.id === slot.activity)?.emoji + " " + ACTIVITY_OPTIONS.find(o => o.id === slot.activity)?.title ?? slot.activity
-                  }</span>
+                  <br><span class="slot-activity">{activityLabel(slot.activity)}</span>
                 {/if}
               </button>
             {/each}
@@ -374,27 +322,43 @@ function fmtTime(t: string) {
           <div class="form">
             <div class="field">
               <label class="field-label" for="name">Your name</label>
-              <input
-                id="name"
-                type="text"
-                bind:value={bookingName}
-                class="text-input"
-                placeholder="e.g. Kuromi~"
-                onkeydown={(e) => e.key === "Enter" && confirmBooking()}
-              />
+              <input id="name" type="text" bind:value={bookingName} class="text-input"
+                placeholder="e.g. Kuromi~" onkeydown={(e) => e.key === "Enter" && confirmBooking()} />
             </div>
+
+            {#if !selectedSlot.activity}
+              <div class="field">
+                <p class="field-label">Pick an activity</p>
+                <div class="act-row">
+                  <button class="act-opt" class:active={bookerActivity === ""} onclick={() => { bookerActivity = ""; bookerCustomActivity = ""; }}>Surprise 🎲</button>
+                  {#each ACTIVITY_OPTIONS as opt}
+                    <button class="act-opt" class:active={bookerActivity === opt.id} onclick={() => { bookerActivity = opt.id; bookerCustomActivity = ""; }}>
+                      {opt.emoji} {opt.title}
+                    </button>
+                  {/each}
+                  <button class="act-opt" class:active={bookerActivity === CUSTOM_ACTIVITY} onclick={() => bookerActivity = CUSTOM_ACTIVITY}>
+                    ✏️ Custom
+                  </button>
+                </div>
+                {#if bookerActivity === CUSTOM_ACTIVITY}
+                  <input type="text" bind:value={bookerCustomActivity} class="text-input" placeholder="e.g. Bowling 🎳" style="margin-top:8px" />
+                {/if}
+              </div>
+            {/if}
+
             {#if submitError}
               <p class="form-error">{submitError}</p>
             {/if}
-            <button
-              class="btn confirm"
-              disabled={!bookingName.trim() || submitting}
-              onclick={confirmBooking}
-            >{submitting ? "Booking..." : "Let's go! 💖"}</button>
+            <button class="btn confirm" disabled={!bookingName.trim() || submitting} onclick={confirmBooking}>
+              {submitting ? "Booking..." : "Let's go! 💖"}
+            </button>
           </div>
         {/if}
       </div>
     {/if}
+    <div class="card-footer">
+      <a href="/u/{username}/edit" class="edit-link">Manage 🔐</a>
+    </div>
   </div>
 {:else if step === "done"}
   <div class="card done-card">
@@ -402,11 +366,13 @@ function fmtTime(t: string) {
     <h1>It's a date! 💕</h1>
     <p class="sub">
       {bookingName}
-      {#each options as opt}
-        {#if opt.id === selected}
-          &nbsp;💖&nbsp; {opt.emoji} {opt.title}
-        {/if}
-      {/each}
+      {#if selectedSlot?.activity}
+        &nbsp;💖&nbsp; {activityLabel(selectedSlot.activity)}
+      {:else if bookerActivity}
+        &nbsp;💖&nbsp; {
+          bookerActivity === CUSTOM_ACTIVITY ? bookerCustomActivity : ACTIVITY_OPTIONS.find(o => o.id === bookerActivity)?.emoji + " " + ACTIVITY_OPTIONS.find(o => o.id === bookerActivity)?.title
+        }
+      {/if}
     </p>
     <p class="sub">
       📅 {selectedSlot ? fmtDate(selectedSlot.date) : ""}
@@ -414,18 +380,17 @@ function fmtTime(t: string) {
     </p>
     <p class="big-emoji">🎉</p>
     <p class="sub">Can't wait! See you soon~ 💖</p>
+    <div class="card-footer">
+      <a href="/" class="edit-link">Home 🏠</a>
+    </div>
   </div>
-{/if}
-
-{#if step !== "ask"}
-  <a href="/u/{username}/edit" class="manage-edit-link">Manage 🔐</a>
 {/if}
 
 <style>
   .card {
     background: var(--white);
     border-radius: 32px;
-    padding: 48px 40px 40px;
+    padding: 48px 40px 24px;
     max-width: 440px;
     width: 100%;
     text-align: center;
@@ -451,7 +416,7 @@ function fmtTime(t: string) {
   .sub {
     font-size: 16px;
     color: var(--text-light);
-    margin: 0 0 32px;
+    margin: 0 0 28px;
   }
 
   .big-emoji {
@@ -485,14 +450,8 @@ function fmtTime(t: string) {
     transition: transform 0.15s, box-shadow 0.15s;
   }
 
-  .yes:hover {
-    transform: scale(1.08);
-    box-shadow: 0 6px 24px rgba(200, 120, 180, 0.45);
-  }
-
-  .yes:active {
-    transform: scale(0.95);
-  }
+  .yes:hover { transform: scale(1.08); box-shadow: 0 6px 24px rgba(200, 120, 180, 0.45); }
+  .yes:active { transform: scale(0.95); }
 
   .no {
     border: 2px solid var(--pink-light);
@@ -502,66 +461,14 @@ function fmtTime(t: string) {
     user-select: none;
   }
 
-  .no:hover {
-    background: var(--pink-pale);
-  }
+  .no:hover { background: var(--pink-pale); }
 
-  .options {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-
-  .option {
-    font-family: "Fredoka", sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    padding: 20px 12px;
-    border: 2px solid var(--pink-pale);
-    border-radius: 20px;
-    background: white;
-    cursor: pointer;
-    transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
-  }
-
-  .option:hover {
-    transform: scale(1.05);
-    border-color: var(--pink);
-    box-shadow: 0 4px 16px var(--shadow);
-  }
-
-  .option:active {
-    transform: scale(0.95);
-  }
-
-  .opt-emoji {
-    font-size: 36px;
-    line-height: 1;
-    margin-bottom: 4px;
-  }
-
-  .opt-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .opt-desc {
-    font-size: 12px;
-    color: var(--text-light);
-    line-height: 1.2;
-  }
-
-  .done-card {
-    padding: 56px 40px;
-  }
+  .done-card { padding: 56px 40px 32px; }
 
   .form {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
   }
 
   .field {
@@ -569,7 +476,6 @@ function fmtTime(t: string) {
     flex-direction: column;
     gap: 6px;
     text-align: left;
-    flex: 1;
   }
 
   .field-label {
@@ -577,6 +483,7 @@ function fmtTime(t: string) {
     font-weight: 500;
     color: var(--text-light);
     padding-left: 4px;
+    margin: 0;
   }
 
   .text-input {
@@ -593,22 +500,7 @@ function fmtTime(t: string) {
     transition: border-color 0.15s;
   }
 
-  .text-input:focus {
-    border-color: var(--purple);
-  }
-
-  .text-input::-webkit-calendar-picker-indicator {
-    cursor: pointer;
-    opacity: 0.6;
-  }
-
-  .date-label {
-    font-size: 20px;
-    font-weight: 500;
-    color: var(--purple);
-    margin: 4px 0 0;
-    text-align: center;
-  }
+  .text-input:focus { border-color: var(--purple); }
 
   .form-error {
     font-size: 14px;
@@ -631,24 +523,14 @@ function fmtTime(t: string) {
     transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
   }
 
-  .confirm:hover:not(:disabled) {
-    transform: scale(1.06);
-    box-shadow: 0 6px 24px rgba(200, 120, 180, 0.45);
-  }
-
-  .confirm:active:not(:disabled) {
-    transform: scale(0.95);
-  }
-
-  .confirm:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
+  .confirm:hover:not(:disabled) { transform: scale(1.06); box-shadow: 0 6px 24px rgba(200, 120, 180, 0.45); }
+  .confirm:active:not(:disabled) { transform: scale(0.95); }
+  .confirm:disabled { opacity: 0.4; cursor: default; }
 
   .slot-picker {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
   }
 
   .dates-row {
@@ -674,15 +556,20 @@ function fmtTime(t: string) {
     flex-shrink: 0;
   }
 
-  .date-chip:hover {
-    border-color: var(--pink);
-    background: var(--pink-pale);
-  }
+  .date-chip:hover { border-color: var(--pink); background: var(--pink-pale); }
 
   .date-chip.active {
     background: linear-gradient(135deg, var(--pink), var(--purple-light));
     color: white;
     border-color: transparent;
+  }
+
+  .date-label {
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--purple);
+    margin: 0;
+    text-align: center;
   }
 
   .slots-row {
@@ -706,10 +593,7 @@ function fmtTime(t: string) {
     line-height: 1.4;
   }
 
-  .slot-btn:hover {
-    border-color: var(--purple);
-    background: var(--pink-pale);
-  }
+  .slot-btn:hover { border-color: var(--purple); background: var(--pink-pale); }
 
   .slot-btn.active {
     background: linear-gradient(135deg, var(--pink), var(--purple-light));
@@ -738,24 +622,45 @@ function fmtTime(t: string) {
     line-height: 1.5;
   }
 
-  .manage-edit-link {
+  .card-footer {
+    margin-top: 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--pink-pale);
+  }
+
+  .edit-link {
     font-family: "Fredoka", sans-serif;
     font-size: 13px;
     font-weight: 500;
-    color: var(--purple);
-    background: var(--white);
+    color: var(--pink-light);
     text-decoration: none;
-    padding: 6px 14px;
-    border-radius: 20px;
-    border: 2px solid var(--purple-light);
-    transition: all 0.15s;
-    white-space: nowrap;
-    display: inline-block;
-    margin-top: 16px;
+    transition: color 0.15s;
   }
 
-  .manage-edit-link:hover {
-    background: var(--purple-light);
+  .edit-link:hover { color: var(--purple); }
+
+  .act-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .act-opt {
+    font-family: "Fredoka", sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border: 2px solid var(--purple-light);
+    border-radius: 20px;
+    background: white;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .act-opt:hover { background: var(--pink-pale); }
+  .act-opt.active {
+    background: linear-gradient(135deg, var(--pink), var(--purple-light));
     color: white;
+    border-color: transparent;
   }
 </style>
