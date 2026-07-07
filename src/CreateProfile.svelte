@@ -4,16 +4,21 @@ import confetti from "canvas-confetti";
 
 let username = $state("");
 let displayName = $state("");
+let email = $state("");
 let password = $state("");
 let creating = $state(false);
 let error = $state("");
 let done = $state(false);
-let createdProfile = $state<{ username: string; display_name: string } | null>(null);
+let createdProfile = $state<{ username: string; display_name: string; email: string | null } | null>(null);
 
 async function create() {
   error = "";
-  if (!username.trim() || !displayName.trim() || !password.trim()) {
+  if (!username.trim() || !displayName.trim() || !email.trim() || !password.trim()) {
     error = "All fields are required";
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    error = "Please enter a valid email address";
     return;
   }
   if (!/^[a-z0-9-]+$/.test(username.trim().toLowerCase())) {
@@ -33,6 +38,7 @@ async function create() {
       body: JSON.stringify({
         username: username.trim().toLowerCase(),
         display_name: displayName.trim(),
+        email: email.trim(),
         password: password.trim(),
       }),
     });
@@ -59,193 +65,57 @@ function goToEdit() {
 }
 </script>
 
-<div class="card">
+<div class="card" style="max-width:480px">
   <div class="deco">✧  ♡  ★  ♡  ✧</div>
 
   {#if done && createdProfile}
-    <h1>You're live! 🎉</h1>
+    <h1 class="font-fredoka font-semibold text-2xl text-text mb-2 leading-tight">You're live! 🎉</h1>
     <p class="sub">Your booking page is ready</p>
-    <div class="result-box">
-      <p class="result-label">Your public link</p>
-      <code class="result-link">{window.location.origin}/u/{createdProfile.username}</code>
+    <div class="bg-pink-pale rounded-2xl p-4 mb-5">
+      <p class="text-xs text-text-light mb-1">Your public link</p>
+      <code class="font-fredoka text-lg text-purple break-all">{window.location.origin}/u/{createdProfile.username}</code>
     </div>
-    <div class="form">
+    <div class="flex flex-col gap-5">
       <p class="sub" style="margin-bottom:0">Share this link so others can book your free slots!</p>
-      <button class="btn confirm" onclick={goToEdit}>Manage slots →</button>
+      <button class="btn btn-primary" onclick={goToEdit}>Manage slots →</button>
     </div>
   {:else}
-    <h1>Create your booking page ✨</h1>
+    <h1 class="font-fredoka font-semibold text-2xl text-text mb-2 leading-tight">Create your booking page ✨</h1>
     <p class="sub">Get your own link to share with others</p>
-    <div class="form">
-      <div class="field">
-        <label class="field-label" for="username">Username</label>
-        <div class="input-prefix">
-          <span class="prefix">{window.location.origin}/u/</span>
-          <input id="username" type="text" bind:value={username} class="text-input prefix-input" placeholder="your-name" />
+    <div class="flex flex-col gap-5">
+      <div class="flex flex-col gap-1.5 text-left">
+        <label class="label" for="username">Username</label>
+        <div class="flex items-stretch border-2 border-pink-light rounded-full bg-white focus-within:border-purple transition-[border-color] duration-150">
+          <span class="flex items-center px-3 text-sm text-text-light bg-pink-pale whitespace-nowrap rounded-l-full">{window.location.origin}/u/</span>
+          <input id="username" type="text" bind:value={username}
+            class="font-fredoka text-lg px-3.5 py-3.5 border-0 bg-transparent text-text flex-1 outline-none rounded-r-full"
+            placeholder="your-name" />
         </div>
       </div>
-      <div class="field">
-        <label class="field-label" for="name">Display name</label>
-        <input id="name" type="text" bind:value={displayName} class="text-input" placeholder="e.g. your name" />
+      <div class="flex flex-col gap-1.5 text-left">
+        <label class="label" for="name">Display name</label>
+        <input id="name" type="text" bind:value={displayName}
+          class="input" placeholder="e.g. your name" />
       </div>
-      <div class="field">
-        <label class="field-label" for="pass">Edit password</label>
-        <input id="pass" type="password" bind:value={password} class="text-input" placeholder="at least 4 characters"
+      <div class="flex flex-col gap-1.5 text-left">
+        <label class="label" for="email">Notification email</label>
+        <input id="email" type="email" bind:value={email}
+          class="input" placeholder="you@email.com" />
+        <p class="text-xs text-text-light ml-1 opacity-70">Get notified when someone books you</p>
+      </div>
+      <div class="flex flex-col gap-1.5 text-left">
+        <label class="label" for="pass">Edit password</label>
+        <input id="pass" type="password" bind:value={password}
+          class="input" placeholder="at least 4 characters"
           onkeydown={(e) => e.key === "Enter" && create()} />
-        <p class="field-hint">You'll need this to manage your slots later</p>
+        <p class="text-xs text-text-light ml-1 opacity-70">You'll need this to manage your slots later</p>
       </div>
       {#if error}
         <p class="form-error">{error}</p>
       {/if}
-      <button class="btn confirm" disabled={creating} onclick={create}>
+      <button class="btn btn-primary" disabled={creating} onclick={create}>
         {creating ? "Creating..." : "Create my page 💖"}
       </button>
     </div>
   {/if}
 </div>
-
-<style>
-  .card {
-    background: var(--white);
-    border-radius: 32px;
-    padding: 48px 40px 40px;
-    max-width: 480px;
-    width: 100%;
-    text-align: center;
-    box-shadow: 0 8px 32px var(--shadow);
-  }
-  .deco {
-    font-size: 20px;
-    letter-spacing: 8px;
-    color: var(--pink-light);
-    margin-bottom: 8px;
-  }
-  h1 {
-    font-family: "Fredoka", sans-serif;
-    font-weight: 600;
-    font-size: 28px;
-    color: var(--text);
-    margin: 0 0 8px;
-    line-height: 1.3;
-  }
-  .sub {
-    font-size: 16px;
-    color: var(--text-light);
-    margin: 0 0 32px;
-  }
-  .form {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    text-align: left;
-  }
-  .field-label {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-light);
-    padding-left: 4px;
-  }
-  .field-hint {
-    font-size: 12px;
-    color: var(--text-light);
-    margin: 0;
-    padding-left: 4px;
-    opacity: 0.7;
-  }
-  .text-input {
-    font-family: "Fredoka", sans-serif;
-    font-size: 18px;
-    padding: 14px 20px;
-    border: 2px solid var(--pink-light);
-    border-radius: 16px;
-    background: white;
-    color: var(--text);
-    width: 100%;
-    box-sizing: border-box;
-    outline: none;
-    transition: border-color 0.15s;
-  }
-  .text-input:focus {
-    border-color: var(--purple);
-  }
-  .input-prefix {
-    display: flex;
-    align-items: stretch;
-    border: 2px solid var(--pink-light);
-    border-radius: 16px;
-    overflow: hidden;
-    background: white;
-    transition: border-color 0.15s;
-  }
-  .input-prefix:focus-within {
-    border-color: var(--purple);
-  }
-  .prefix {
-    display: flex;
-    align-items: center;
-    padding: 0 6px 0 14px;
-    font-size: 14px;
-    color: var(--text-light);
-    background: var(--pink-pale);
-    white-space: nowrap;
-  }
-  .prefix-input {
-    border: none !important;
-    border-radius: 0 !important;
-    padding: 14px 14px 14px 6px !important;
-  }
-  .form-error {
-    font-size: 14px;
-    color: var(--pink);
-    text-align: center;
-    margin: 0;
-  }
-  .btn {
-    font-family: "Fredoka", sans-serif;
-    font-size: 18px;
-    font-weight: 500;
-    padding: 14px 48px;
-    border: none;
-    border-radius: 60px;
-    cursor: pointer;
-  }
-  .confirm {
-    background: linear-gradient(135deg, var(--pink), var(--purple-light));
-    color: white;
-    box-shadow: 0 4px 16px rgba(200, 120, 180, 0.3);
-    transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
-  }
-  .confirm:hover:not(:disabled) {
-    transform: scale(1.06);
-    box-shadow: 0 6px 24px rgba(200, 120, 180, 0.45);
-  }
-  .confirm:active:not(:disabled) {
-    transform: scale(0.95);
-  }
-  .confirm:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-  .result-box {
-    background: var(--pink-pale);
-    border-radius: 16px;
-    padding: 16px 20px;
-    margin-bottom: 20px;
-  }
-  .result-label {
-    font-size: 13px;
-    color: var(--text-light);
-    margin: 0 0 6px;
-  }
-  .result-link {
-    font-family: "Fredoka", sans-serif;
-    font-size: 18px;
-    color: var(--purple);
-    word-break: break-all;
-  }
-</style>

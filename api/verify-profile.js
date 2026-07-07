@@ -17,7 +17,7 @@ export default async function handler(req, res) {
 
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("id, username, display_name, password_hash")
+    .select("id, username, display_name, email, password_hash")
     .eq("username", username.trim().toLowerCase())
     .maybeSingle();
 
@@ -37,6 +37,6 @@ export default async function handler(req, res) {
 
   return res.status(200).json({
     success: true,
-    profile: { id: profile.id, username: profile.username, display_name: profile.display_name },
+    profile: { id: profile.id, username: profile.username, display_name: profile.display_name, email: profile.email },
   });
 }

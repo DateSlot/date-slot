@@ -13,7 +13,15 @@ interface SlotRow {
   time_end: string;
   activity: string | null;
   is_booked: boolean;
-  booker_name: string | null;
+  booking: {
+    id: string;
+    name: string;
+    email: string;
+    activity: string | null;
+    status: string;
+    deny_reason: string | null;
+    created_at: string;
+  } | null;
   created_at: string;
 }
 
@@ -22,6 +30,7 @@ let loggedIn = $state(false);
 let loginError = $state("");
 
 let slots = $state<SlotRow[]>([]);
+let profileEmail = $state("");
 let likes = $state("");
 let likesSaved = $state(false);
 let likesSaving = $state(false);
@@ -36,6 +45,10 @@ let newCustomActivity = $state("");
 let adding = $state(false);
 
 let deleting = $state<string | null>(null);
+let confirming = $state<string | null>(null);
+let denying = $state<string | null>(null);
+let denyReason = $state("");
+let confirmError = $state("");
 
 onMount(async () => {
   const saved = sessionStorage.getItem(PWD_KEY);
@@ -77,6 +90,7 @@ function logout() {
   sessionStorage.removeItem(PWD_KEY);
   slots = [];
   likes = "";
+  profileEmail = "";
 }
 
 async function loadSlots() {
@@ -91,6 +105,7 @@ async function loadSlots() {
     const data = await res.json();
     slots = data.slots || [];
     likes = data.likes || "";
+    profileEmail = data.email || "";
   } catch (e) {
     error = (e as Error).message;
   } finally {
@@ -148,6 +163,55 @@ async function deleteSlot(slotId: string) {
   }
 }
 
+async function confirmBooking(rsvpId: string) {
+  confirmError = "";
+  confirming = rsvpId;
+  try {
+    const res = await fetch("/api/confirm-booking", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${password}`,
+      },
+      body: JSON.stringify({ rsvp_id: rsvpId }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || "Failed to confirm");
+    }
+    loadSlots();
+  } catch (e) {
+    confirmError = (e as Error).message;
+  } finally {
+    confirming = null;
+  }
+}
+
+async function denyBooking(rsvpId: string) {
+  confirmError = "";
+  denying = rsvpId;
+  try {
+    const res = await fetch("/api/deny-booking", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${password}`,
+      },
+      body: JSON.stringify({ rsvp_id: rsvpId, reason: denyReason.trim() || undefined }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || "Failed to deny");
+    }
+    denyReason = "";
+    loadSlots();
+  } catch (e) {
+    confirmError = (e as Error).message;
+  } finally {
+    denying = null;
+  }
+}
+
 async function saveLikes() {
   likesSaving = true;
   likesSaved = false;
@@ -190,48 +254,107 @@ function fmtDate(d: string) {
   });
 }
 
+function pendingSlots() {
+  return slots.filter((s) => s.booking?.status === "pending");
+}
+
 function publicUrl() {
   return typeof window !== "undefined" ? `${window.location.origin}/u/${username}` : "";
 }
 </script>
 
-<div class="admin-card" class:wide={loggedIn}>
+<div class="card" class:wide={loggedIn} style={loggedIn ? "max-width:720px;text-align:left" : "max-width:440px"}>
   <div class="deco">✧  ♡  ★  ♡  ✧</div>
 
   {#if !loggedIn}
-    <h1>Manage your slots 🔐</h1>
+    <h1 class="title">Manage your slots 🔐</h1>
     <p class="sub">Enter your password to edit</p>
-    <div class="form">
-      <input type="password" bind:value={password} class="text-input" placeholder="password"
+    <div class="flex flex-col gap-4">
+      <input type="password" bind:value={password} class="input" placeholder="password"
         onkeydown={(e) => e.key === "Enter" && login()} />
       {#if loginError}
         <p class="form-error">{loginError}</p>
       {/if}
-      <button class="btn confirm" onclick={login} disabled={!password}>Login 💖</button>
+      <button class="btn btn-primary" onclick={login} disabled={!password}>Login 💖</button>
     </div>
   {:else}
-    <div class="admin-header">
-      <h1>Hey there! ✨</h1>
-      <div class="header-actions">
+    <div class="flex justify-between items-center flex-wrap gap-3 mb-2">
+      <h1 class="title" style="margin:0">Hey there! ✨</h1>
+      <div class="flex gap-2.5 items-center">
         <a href={publicUrl()} class="btn-link" target="_blank">View page ↗</a>
         <button class="btn-logout" onclick={logout}>Logout</button>
       </div>
     </div>
-    <p class="sub">{publicUrl()}</p>
+    <p class="sub" style="word-break:break-all">{publicUrl()}</p>
 
-    <div class="add-form">
-      <h2>Add a free slot ✨</h2>
-      <div class="add-form-row">
-        <input type="date" bind:value={newDate} class="text-input" min={new Date().toISOString().split("T")[0]} />
-        <input type="time" bind:value={newTimeStart} class="text-input time-input" />
-        <input type="time" bind:value={newTimeEnd} class="text-input time-input" />
-        <button class="btn confirm add-btn" onclick={addSlot} disabled={!newDate || adding}>
+    {#if !profileEmail}
+      <div class="bg-pink-pale rounded-2xl p-3 mb-4 text-center">
+        <p class="text-sm text-text m-0">
+          ⚠️ You haven't set your notification email yet.
+          <a href="/create" class="text-purple no-underline hover:underline">Create a new profile</a> with an email to get notified of bookings.
+        </p>
+      </div>
+    {/if}
+
+    {#each pendingSlots() as slot}
+      <div class="bg-pink-pale rounded-2xl p-4 mb-4 border-2 border-pink-light">
+        <div class="flex justify-between items-start flex-wrap gap-2">
+          <div>
+            <p class="font-semibold text-text m-0 text-lg">{slot.booking!.name}</p>
+            <p class="text-sm text-text-light m-0">{slot.booking!.email}</p>
+          </div>
+          <div class="badge" class:pending={true}>Pending</div>
+        </div>
+        <p class="text-sm text-text m-0 mt-1">
+          📅 {fmtDate(slot.date)} · 🕐 {fmtTime(slot.time_start)} – {fmtTime(slot.time_end)}
+          {#if slot.activity || slot.booking?.activity}
+            · {activityEmoji(slot.activity || slot.booking!.activity)} {activityTitle(slot.activity || slot.booking!.activity)}
+          {/if}
+        </p>
+        {#if confirmError}
+          <p class="form-error" style="margin-top:6px">{confirmError}</p>
+        {/if}
+        <div class="flex gap-2 mt-3 items-center">
+          <button class="btn btn-primary" style="padding:8px 20px;font-size:14px"
+            disabled={confirming === slot.booking!.id || denying === slot.booking!.id}
+            onclick={() => confirmBooking(slot.booking!.id)}>
+            {confirming === slot.booking!.id ? "Confirming..." : "Accept ✅"}
+          </button>
+          <button class="btn border-2 border-pink-light bg-white text-pink"
+            style="padding:8px 20px;font-size:14px"
+            disabled={confirming === slot.booking!.id || denying === slot.booking!.id}
+            onclick={() => { denyReason = ""; denying = slot.booking!.id; }}>
+            Deny ❌
+          </button>
+          {#if denying === slot.booking!.id}
+            <div class="flex gap-2 items-center flex-1">
+              <input type="text" bind:value={denyReason} class="input" placeholder="Reason (optional)"
+                style="font-size:14px;padding:8px 14px" />
+              <button class="btn border-2 border-pink bg-pink-pale text-pink"
+                style="padding:8px 16px;font-size:13px;white-space:nowrap"
+                onclick={() => denyBooking(slot.booking!.id)}>Send</button>
+              <button class="btn border-none bg-transparent text-text-light"
+                style="padding:8px;font-size:13px"
+                onclick={() => { denying = null; denyReason = ""; }}>Cancel</button>
+            </div>
+          {/if}
+        </div>
+      </div>
+    {/each}
+
+    <div class="bg-pink-pale rounded-2xl p-5 mb-5">
+      <h2 class="heading2">Add a free slot ✨</h2>
+      <div class="flex gap-2.5 items-end flex-wrap">
+        <input type="date" bind:value={newDate} class="input" min={new Date().toISOString().split("T")[0]} style="width:auto;flex:1" />
+        <input type="time" bind:value={newTimeStart} class="input time-input" />
+        <input type="time" bind:value={newTimeEnd} class="input time-input" />
+        <button class="btn btn-primary" style="padding:14px 24px;white-space:nowrap" onclick={addSlot} disabled={!newDate || adding}>
           {adding ? "Adding..." : "Add 💖"}
         </button>
       </div>
-      <div class="activity-picker">
-        <p class="activity-label">Activity (optional)</p>
-        <div class="activity-options">
+      <div class="mt-3.5">
+        <p class="label" style="margin-bottom:6px">Activity (optional)</p>
+        <div class="flex flex-wrap gap-1.5">
           <button class="activity-opt" class:active={newActivity === ""} onclick={() => { newActivity = ""; newCustomActivity = ""; }}>Any</button>
           {#each ACTIVITY_OPTIONS as opt}
             <button class="activity-opt" class:active={newActivity === opt.id} onclick={() => { newActivity = opt.id; newCustomActivity = ""; }}>
@@ -243,25 +366,25 @@ function publicUrl() {
           </button>
         </div>
         {#if newActivity === CUSTOM_ACTIVITY}
-          <input type="text" bind:value={newCustomActivity} class="text-input" placeholder="e.g. Bowling 🎳" />
+          <input type="text" bind:value={newCustomActivity} class="input" placeholder="e.g. Bowling 🎳" />
         {/if}
       </div>
     </div>
 
-    <div class="likes-form">
-      <h2>Things I like 💖</h2>
+    <div class="mb-5">
+      <h2 class="heading2">Things I like 💖</h2>
       <textarea
-        class="text-input likes-input"
+        class="input"
         bind:value={likes}
         placeholder="e.g. sushi, sunsets, cats, board games..."
         rows="3"
-      ></textarea>
-      <div class="likes-actions">
-        <button class="btn confirm likes-btn" onclick={saveLikes} disabled={likesSaving}>
+        style="resize:vertical;font-size:16px;min-height:80px"></textarea>
+      <div class="flex items-center gap-3 mt-2.5">
+        <button class="btn btn-primary" style="padding:10px 28px;font-size:15px" onclick={saveLikes} disabled={likesSaving}>
           {likesSaving ? "Saving..." : "Save 💖"}
         </button>
         {#if likesSaved}
-          <span class="saved-note">Saved! ✨</span>
+          <span class="text-sm" style="color:#155724">Saved! ✨</span>
         {/if}
       </div>
     </div>
@@ -272,10 +395,8 @@ function publicUrl() {
 
     {#if loading}
       <p class="sub">Loading...</p>
-    {:else if slots.length === 0}
-      <p class="sub">No slots yet. Add one above! ✨</p>
     {:else}
-      <div class="table-wrap">
+      <div class="overflow-x-auto">
         <table>
           <thead>
             <tr>
@@ -292,21 +413,27 @@ function publicUrl() {
               <tr>
                 <td>{fmtDate(slot.date)}</td>
                 <td>{fmtTime(slot.time_start)} – {fmtTime(slot.time_end)}</td>
-                <td class="activity-cell">
+                <td class="text-sm">
                   {#if slot.activity}
                     {activityEmoji(slot.activity)} {activityTitle(slot.activity)}
                   {:else}
-                    <span class="any-activity">Any</span>
+                    <span class="italic" style="color:var(--color-text-light)">Any</span>
                   {/if}
                 </td>
                 <td>
-                  <span class="badge" class:available={!slot.is_booked} class:booked={slot.is_booked}>
-                    {slot.is_booked ? "Booked" : "Free"}
-                  </span>
+                  {#if slot.booking?.status === "pending"}
+                    <span class="badge pending">Pending</span>
+                  {:else if slot.booking?.status === "confirmed"}
+                    <span class="badge booked">Booked</span>
+                  {:else if slot.booking?.status === "denied"}
+                    <span class="badge denied">Denied</span>
+                  {:else}
+                    <span class="badge available">Free</span>
+                  {/if}
                 </td>
-                <td>{slot.booker_name ?? "—"}</td>
+                <td class="text-sm">{slot.booking?.name ?? "—"}</td>
                 <td>
-                  {#if !slot.is_booked}
+                  {#if !slot.booking || slot.booking.status === "denied"}
                     <button class="btn-delete" disabled={deleting === slot.id} onclick={() => deleteSlot(slot.id)}>
                       ✕
                     </button>
@@ -322,240 +449,82 @@ function publicUrl() {
 </div>
 
 <style>
-  .admin-card {
-    background: var(--white);
-    border-radius: 32px;
-    padding: 40px;
-    max-width: 440px;
-    width: 100%;
-    text-align: center;
-    box-shadow: 0 8px 32px var(--shadow);
-  }
-  .admin-card.wide {
-    max-width: 720px;
-    text-align: left;
-  }
-  .deco {
-    font-size: 20px;
-    letter-spacing: 8px;
-    color: var(--pink-light);
-    margin-bottom: 8px;
-  }
-  h1 {
+  .title {
     font-family: "Fredoka", sans-serif;
     font-weight: 600;
     font-size: 28px;
-    color: var(--text);
-    margin: 0;
+    color: var(--color-text);
     line-height: 1.3;
   }
-  h2 {
+  .heading2 {
     font-family: "Fredoka", sans-serif;
     font-weight: 500;
     font-size: 18px;
-    color: var(--text);
+    color: var(--color-text);
     margin: 0 0 12px;
-  }
-  .sub {
-    font-size: 16px;
-    color: var(--text-light);
-    margin: 8px 0 24px;
-    word-break: break-all;
-  }
-  .form {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-  .text-input {
-    font-family: "Fredoka", sans-serif;
-    font-size: 18px;
-    padding: 14px 20px;
-    border: 2px solid var(--pink-light);
-    border-radius: 16px;
-    background: white;
-    color: var(--text);
-    width: 100%;
-    box-sizing: border-box;
-    outline: none;
-    transition: border-color 0.15s;
-  }
-  .text-input:focus {
-    border-color: var(--purple);
   }
   .time-input {
     width: 120px;
     flex-shrink: 0;
   }
-  .form-error {
-    font-size: 14px;
-    color: var(--pink);
-    text-align: center;
-    margin: 0;
-  }
-  .btn {
-    font-family: "Fredoka", sans-serif;
-    font-size: 18px;
-    font-weight: 500;
-    padding: 14px 48px;
-    border: none;
-    border-radius: 60px;
-    cursor: pointer;
-  }
-  .confirm {
-    background: linear-gradient(135deg, var(--pink), var(--purple-light));
-    color: white;
-    box-shadow: 0 4px 16px rgba(200, 120, 180, 0.3);
-    transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
-  }
-  .confirm:hover:not(:disabled) {
-    transform: scale(1.06);
-    box-shadow: 0 6px 24px rgba(200, 120, 180, 0.45);
-  }
-  .confirm:active:not(:disabled) {
-    transform: scale(0.95);
-  }
-  .confirm:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-  .admin-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 8px;
-  }
-  .header-actions {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-  }
   .btn-link {
     font-family: "Fredoka", sans-serif;
     font-size: 14px;
-    color: var(--purple);
+    color: var(--color-purple);
     text-decoration: none;
     padding: 6px 16px;
-    border: 2px solid var(--purple-light);
+    border: 2px solid var(--color-purple-light);
     border-radius: 20px;
     transition: background 0.15s;
   }
-  .btn-link:hover {
-    background: var(--pink-pale);
-  }
+  .btn-link:hover { background: var(--color-pink-pale); }
   .btn-logout {
     font-family: "Fredoka", sans-serif;
     font-size: 14px;
-    color: var(--pink);
+    color: var(--color-pink);
     background: none;
-    border: 2px solid var(--pink-light);
+    border: 2px solid var(--color-pink-light);
     border-radius: 20px;
     padding: 6px 16px;
     cursor: pointer;
     transition: background 0.15s;
   }
-  .btn-logout:hover {
-    background: var(--pink-pale);
+  .btn-logout:hover { background: var(--color-pink-pale); }
+  .activity-opt {
+    font-family: "Fredoka", sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border: 2px solid var(--color-purple-light);
+    border-radius: 20px;
+    background: white;
+    color: var(--color-text);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .activity-opt:hover { background: var(--color-pink-pale); }
+  .activity-opt.active {
+    background: linear-gradient(135deg, var(--color-pink), var(--color-purple-light));
+    color: white;
+    border-color: transparent;
   }
   .btn-delete {
     font-family: "Fredoka", sans-serif;
     font-size: 14px;
     width: 32px;
     height: 32px;
-    border: 2px solid var(--pink-light);
+    border: 2px solid var(--color-pink-light);
     border-radius: 50%;
     background: white;
-    color: var(--pink);
+    color: var(--color-pink);
     cursor: pointer;
     transition: all 0.15s;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
   }
-  .btn-delete:hover {
-    background: var(--pink-pale);
-    border-color: var(--pink);
-  }
-  .btn-delete:disabled {
-    opacity: 0.4;
-  }
-  .add-form {
-    background: var(--pink-pale);
-    border-radius: 20px;
-    padding: 20px;
-    margin-bottom: 20px;
-  }
-  .add-form-row {
-    display: flex;
-    gap: 10px;
-    align-items: flex-end;
-    flex-wrap: wrap;
-  }
-  .add-btn {
-    padding: 14px 24px !important;
-    white-space: nowrap;
-  }
-  .activity-picker {
-    margin-top: 14px;
-  }
-  .activity-label {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-light);
-    margin: 0 0 8px;
-  }
-  .activity-options {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .activity-opt {
-    font-family: "Fredoka", sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    padding: 6px 14px;
-    border: 2px solid var(--purple-light);
-    border-radius: 20px;
-    background: white;
-    color: var(--text);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .activity-opt:hover {
-    background: var(--pink-pale);
-  }
-  .activity-opt.active {
-    background: linear-gradient(135deg, var(--pink), var(--purple-light));
-    color: white;
-    border-color: transparent;
-  }
-  .likes-form {
-    margin-bottom: 20px;
-  }
-  .likes-input {
-    resize: vertical;
-    font-size: 16px !important;
-    min-height: 80px;
-  }
-  .likes-actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-top: 10px;
-  }
-  .likes-btn {
-    padding: 10px 28px !important;
-    font-size: 15px !important;
-  }
-  .saved-note {
-    font-size: 14px;
-    color: #155724;
-  }
-  .table-wrap {
-    overflow-x: auto;
-  }
+  .btn-delete:hover { background: var(--color-pink-pale); border-color: var(--color-pink); }
+  .btn-delete:disabled { opacity: 0.4; }
   table {
     width: 100%;
     border-collapse: collapse;
@@ -564,21 +533,14 @@ function publicUrl() {
   th {
     text-align: left;
     padding: 12px 10px;
-    color: var(--text-light);
+    color: var(--color-text-light);
     font-weight: 500;
-    border-bottom: 2px solid var(--pink-light);
+    border-bottom: 2px solid var(--color-pink-light);
   }
   td {
     padding: 10px;
-    border-bottom: 1px solid var(--pink-pale);
-    color: var(--text);
-  }
-  .activity-cell {
-    font-size: 14px;
-  }
-  .any-activity {
-    color: var(--text-light);
-    font-style: italic;
+    border-bottom: 1px solid var(--color-pink-pale);
+    color: var(--color-text);
   }
   .badge {
     font-size: 13px;
@@ -586,12 +548,8 @@ function publicUrl() {
     padding: 4px 12px;
     border-radius: 12px;
   }
-  .badge.available {
-    background: #d4edda;
-    color: #155724;
-  }
-  .badge.booked {
-    background: var(--pink-pale);
-    color: var(--pink);
-  }
+  .badge.available { background: #d4edda; color: #155724; }
+  .badge.pending { background: #fff3cd; color: #856404; }
+  .badge.booked { background: var(--color-pink-pale); color: var(--color-pink); }
+  .badge.denied { background: #f8d7da; color: #721c24; }
 </style>

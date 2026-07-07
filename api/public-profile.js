@@ -32,7 +32,10 @@ export default async function handler(req, res) {
 
   const { data: slots, error: slotsError } = await supabase
     .from("available_slots")
-    .select("id, date, time_start, time_end, activity")
+    .select(`
+      id, date, time_start, time_end, activity,
+      rsvps!left ( id, status )
+    `)
     .eq("profile_id", profile.id)
     .eq("is_booked", false)
     .gte("date", today)
@@ -43,10 +46,23 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: slotsError.message });
   }
 
+  const available = slots.filter((s) => {
+    const activeRsvps = (s.rsvps || []).filter(
+      (r) => r.status === "pending" || r.status === "confirmed"
+    );
+    return activeRsvps.length === 0;
+  });
+
   const grouped = {};
-  for (const slot of slots) {
+  for (const slot of available) {
     if (!grouped[slot.date]) grouped[slot.date] = [];
-    grouped[slot.date].push(slot);
+    grouped[slot.date].push({
+      id: slot.id,
+      date: slot.date,
+      time_start: slot.time_start,
+      time_end: slot.time_end,
+      activity: slot.activity,
+    });
   }
 
   return res.status(200).json({

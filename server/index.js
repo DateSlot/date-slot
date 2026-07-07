@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { sendEmail, bookingNotificationEmail, confirmationEmail, denialEmail } from "../api/_email.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -63,14 +64,18 @@ app.get("/api/available-slots", async (_req, res) => {
 });
 
 app.post("/api/booking", async (req, res) => {
-  const { slot_id, name, activity } = req.body;
-  if (!slot_id || !name?.trim()) {
+  const { slot_id, name, email, activity } = req.body;
+  if (!slot_id || !name?.trim() || !email?.trim()) {
     return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    return res.status(400).json({ error: "Invalid email address" });
   }
 
   const { data: slot, error: fetchError } = await supabase
     .from("available_slots")
-    .select("id, is_booked, profile_id, activity")
+    .select("id, is_booked, profile_id, activity, date, time_start, time_end, profiles!inner ( username, display_name, email )")
     .eq("id", slot_id)
     .single();
 
@@ -82,35 +87,56 @@ app.post("/api/booking", async (req, res) => {
     return res.status(409).json({ error: "Slot already booked" });
   }
 
-  const { error: bookError } = await supabase
-    .from("available_slots")
-    .update({ is_booked: true })
-    .eq("id", slot_id)
-    .eq("is_booked", false);
+  const { data: existingRsvp } = await supabase
+    .from("rsvps")
+    .select("id")
+    .eq("slot_id", slot_id)
+    .in("status", ["pending", "confirmed"])
+    .maybeSingle();
 
-  if (bookError) {
-    return res.status(500).json({ error: "Failed to book slot" });
+  if (existingRsvp) {
+    return res.status(409).json({ error: "Slot already has a pending booking" });
   }
 
-  const finalActivity = slot.activity || activity?.trim() || "booking";
+  const finalActivity = slot.activity || activity?.trim() || null;
 
-  const { error: rsvpError } = await supabase.from("rsvps").insert({
-    slot_id,
-    profile_id: slot.profile_id,
-    name: name.trim(),
-    activity: finalActivity,
-  });
+  const { error: rsvpError } = await supabase
+    .from("rsvps")
+    .insert({
+      slot_id,
+      profile_id: slot.profile_id,
+      name: name.trim(),
+      booker_email: email.trim(),
+      activity: finalActivity,
+      status: "pending",
+    });
 
   if (rsvpError) {
-    await supabase.from("available_slots").update({ is_booked: false }).eq("id", slot_id);
-    return res.status(500).json({ error: "Failed to create RSVP" });
+    return res.status(500).json({ error: "Failed to create booking request" });
   }
 
-  res.json({ success: true, activity: finalActivity });
+  const profile = slot.profiles;
+  if (profile?.email) {
+    const origin = req.headers.origin || `http://localhost:${PORT}`;
+    const editUrl = `${origin}/u/${profile.username}/edit`;
+    const notif = bookingNotificationEmail({
+      bookerName: name.trim(),
+      creatorName: profile.display_name,
+      date: slot.date,
+      timeStart: slot.time_start?.slice(0, 5),
+      timeEnd: slot.time_end?.slice(0, 5),
+      activity: finalActivity,
+      bookerEmail: email.trim(),
+      editUrl,
+    });
+    await sendEmail({ to: profile.email, ...notif });
+  }
+
+  res.json({ success: true, status: "pending", activity: finalActivity });
 });
 
 app.post("/api/create-profile", async (req, res) => {
-  const { username, display_name, password } = req.body;
+  const { username, display_name, password, email } = req.body;
   if (!username?.trim() || !display_name?.trim() || !password?.trim()) {
     return res.status(400).json({ error: "Missing required fields" });
   }
@@ -141,13 +167,14 @@ app.post("/api/create-profile", async (req, res) => {
       username: username.trim().toLowerCase(),
       display_name: display_name.trim(),
       password_hash,
+      email: email?.trim() || null,
     })
     .select()
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
 
-  res.status(201).json({ id: data.id, username: data.username, display_name: data.display_name });
+  res.status(201).json({ id: data.id, username: data.username, display_name: data.display_name, email: data.email });
 });
 
 app.get("/api/public-profile", async (req, res) => {
@@ -167,7 +194,10 @@ app.get("/api/public-profile", async (req, res) => {
 
   const { data: slots, error: slotsError } = await supabase
     .from("available_slots")
-    .select("id, date, time_start, time_end, activity")
+    .select(`
+      id, date, time_start, time_end, activity,
+      rsvps!left ( id, status )
+    `)
     .eq("profile_id", profile.id)
     .eq("is_booked", false)
     .gte("date", today)
@@ -176,10 +206,17 @@ app.get("/api/public-profile", async (req, res) => {
 
   if (slotsError) return res.status(500).json({ error: slotsError.message });
 
+  const available = slots.filter((s) => {
+    const activeRsvps = (s.rsvps || []).filter(
+      (r) => r.status === "pending" || r.status === "confirmed"
+    );
+    return activeRsvps.length === 0;
+  });
+
   const grouped = {};
-  for (const slot of slots) {
+  for (const slot of available) {
     if (!grouped[slot.date]) grouped[slot.date] = [];
-    grouped[slot.date].push(slot);
+    grouped[slot.date].push({ id: slot.id, date: slot.date, time_start: slot.time_start, time_end: slot.time_end, activity: slot.activity });
   }
 
   res.json({
@@ -196,7 +233,7 @@ app.post("/api/verify-profile", async (req, res) => {
 
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("id, username, display_name, password_hash")
+    .select("id, username, display_name, email, password_hash")
     .eq("username", username.trim().toLowerCase())
     .maybeSingle();
 
@@ -210,7 +247,7 @@ app.post("/api/verify-profile", async (req, res) => {
 
   res.json({
     success: true,
-    profile: { id: profile.id, username: profile.username, display_name: profile.display_name },
+    profile: { id: profile.id, username: profile.username, display_name: profile.display_name, email: profile.email },
   });
 });
 
@@ -226,7 +263,7 @@ app.get("/api/manage-slots", async (req, res) => {
     .from("available_slots")
     .select(`
       id, date, time_start, time_end, activity, is_booked, created_at,
-      rsvps ( id, name, created_at )
+      rsvps ( id, name, booker_email, activity, status, deny_reason, created_at )
     `)
     .eq("profile_id", profile.id)
     .order("date", { ascending: false })
@@ -241,17 +278,27 @@ app.get("/api/manage-slots", async (req, res) => {
     time_end: s.time_end,
     activity: s.activity,
     is_booked: s.is_booked,
-    booker_name: s.rsvps?.[0]?.name ?? null,
+    booking: s.rsvps?.[0]
+      ? {
+          id: s.rsvps[0].id,
+          name: s.rsvps[0].name,
+          email: s.rsvps[0].booker_email,
+          activity: s.rsvps[0].activity,
+          status: s.rsvps[0].status,
+          deny_reason: s.rsvps[0].deny_reason,
+          created_at: s.rsvps[0].created_at,
+        }
+      : null,
     created_at: s.created_at,
   }));
 
   const { data: profileData } = await supabase
     .from("profiles")
-    .select("likes")
+    .select("likes, email")
     .eq("id", profile.id)
     .single();
 
-  res.json({ slots, likes: profileData?.likes });
+  res.json({ slots, likes: profileData?.likes, email: profileData?.email });
 });
 
 app.post("/api/manage-slots", async (req, res) => {
@@ -305,6 +352,114 @@ app.delete("/api/manage-slots", async (req, res) => {
     .eq("profile_id", profile.id);
 
   if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+app.post("/api/confirm-booking", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+  const password = authHeader.slice(7);
+
+  const { rsvp_id } = req.body;
+  if (!rsvp_id) return res.status(400).json({ error: "Missing rsvp_id" });
+
+  const { data: rsvp, error: rsvpFetchError } = await supabase
+    .from("rsvps")
+    .select("id, slot_id, name, booker_email, activity, status, profile_id, available_slots!inner ( date, time_start, time_end, profile_id )")
+    .eq("id", rsvp_id)
+    .single();
+
+  if (rsvpFetchError || !rsvp) return res.status(404).json({ error: "Booking not found" });
+  if (rsvp.status !== "pending") return res.status(400).json({ error: "Booking is not pending" });
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, password_hash, display_name")
+    .eq("id", rsvp.profile_id)
+    .single();
+
+  if (!profile) return res.status(401).json({ error: "Unauthorized" });
+
+  const hash = createHash("sha256").update(password).digest("hex");
+  if (hash !== profile.password_hash) return res.status(401).json({ error: "Unauthorized" });
+
+  const { error: rsvpUpdateError } = await supabase
+    .from("rsvps")
+    .update({ status: "confirmed" })
+    .eq("id", rsvp_id);
+
+  if (rsvpUpdateError) return res.status(500).json({ error: "Failed to confirm booking" });
+
+  const { error: slotUpdateError } = await supabase
+    .from("available_slots")
+    .update({ is_booked: true })
+    .eq("id", rsvp.slot_id);
+
+  if (slotUpdateError) {
+    await supabase.from("rsvps").update({ status: "pending" }).eq("id", rsvp_id);
+    return res.status(500).json({ error: "Failed to update slot" });
+  }
+
+  if (rsvp.booker_email) {
+    const slot = rsvp.available_slots;
+    const notif = confirmationEmail({
+      bookerName: rsvp.name,
+      creatorName: profile.display_name,
+      date: slot.date,
+      timeStart: slot.time_start?.slice(0, 5),
+      timeEnd: slot.time_end?.slice(0, 5),
+      activity: rsvp.activity,
+    });
+    await sendEmail({ to: rsvp.booker_email, ...notif });
+  }
+
+  res.json({ success: true });
+});
+
+app.post("/api/deny-booking", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+  const password = authHeader.slice(7);
+
+  const { rsvp_id, reason } = req.body;
+  if (!rsvp_id) return res.status(400).json({ error: "Missing rsvp_id" });
+
+  const { data: rsvp, error: rsvpFetchError } = await supabase
+    .from("rsvps")
+    .select("id, name, booker_email, status, profile_id")
+    .eq("id", rsvp_id)
+    .single();
+
+  if (rsvpFetchError || !rsvp) return res.status(404).json({ error: "Booking not found" });
+  if (rsvp.status !== "pending") return res.status(400).json({ error: "Booking is not pending" });
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, password_hash, display_name")
+    .eq("id", rsvp.profile_id)
+    .single();
+
+  if (!profile) return res.status(401).json({ error: "Unauthorized" });
+
+  const hash = createHash("sha256").update(password).digest("hex");
+  if (hash !== profile.password_hash) return res.status(401).json({ error: "Unauthorized" });
+
+  const { error: rsvpUpdateError } = await supabase
+    .from("rsvps")
+    .update({ status: "denied", deny_reason: reason?.trim() || null })
+    .eq("id", rsvp_id);
+
+  if (rsvpUpdateError) return res.status(500).json({ error: "Failed to deny booking" });
+
+  if (rsvp.booker_email) {
+    const notif = denialEmail({
+      bookerName: rsvp.name,
+      creatorName: profile.display_name,
+      reason: reason?.trim(),
+    });
+    await sendEmail({ to: rsvp.booker_email, ...notif });
+  }
+
   res.json({ success: true });
 });
 

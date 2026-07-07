@@ -1,4 +1,5 @@
 import { getSupabase } from "./_supabase.js";
+import { sendEmail, bookingNotificationEmail } from "./_email.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -7,16 +8,20 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { slot_id, name, activity } = req.body;
-  if (!slot_id || !name?.trim()) {
+  const { slot_id, name, email, activity } = req.body;
+  if (!slot_id || !name?.trim() || !email?.trim()) {
     return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    return res.status(400).json({ error: "Invalid email address" });
   }
 
   const supabase = getSupabase();
 
   const { data: slot, error: fetchError } = await supabase
     .from("available_slots")
-    .select("id, is_booked, profile_id, activity")
+    .select("id, is_booked, profile_id, activity, date, time_start, time_end, profiles!inner ( username, display_name, email )")
     .eq("id", slot_id)
     .single();
 
@@ -28,36 +33,50 @@ export default async function handler(req, res) {
     return res.status(409).json({ error: "Slot already booked" });
   }
 
-  const { error: bookError } = await supabase
-    .from("available_slots")
-    .update({ is_booked: true })
-    .eq("id", slot_id)
-    .eq("is_booked", false);
+  const { data: existingRsvp } = await supabase
+    .from("rsvps")
+    .select("id")
+    .eq("slot_id", slot_id)
+    .in("status", ["pending", "confirmed"])
+    .maybeSingle();
 
-  if (bookError) {
-    return res.status(500).json({ error: "Failed to book slot" });
+  if (existingRsvp) {
+    return res.status(409).json({ error: "Slot already has a pending booking" });
   }
 
-  const finalActivity = slot.activity || activity?.trim() || "booking";
-
-  const rsvpData = {
-    slot_id,
-    profile_id: slot.profile_id,
-    name: name.trim(),
-    activity: finalActivity,
-  };
+  const finalActivity = slot.activity || activity?.trim() || null;
 
   const { error: rsvpError } = await supabase
     .from("rsvps")
-    .insert(rsvpData);
+    .insert({
+      slot_id,
+      profile_id: slot.profile_id,
+      name: name.trim(),
+      booker_email: email.trim(),
+      activity: finalActivity,
+      status: "pending",
+    });
 
   if (rsvpError) {
-    await supabase
-      .from("available_slots")
-      .update({ is_booked: false })
-      .eq("id", slot_id);
-    return res.status(500).json({ error: "Failed to create RSVP" });
+    return res.status(500).json({ error: "Failed to create booking request" });
   }
 
-  return res.status(200).json({ success: true, activity: finalActivity });
+  const profile = slot.profiles;
+  if (profile?.email) {
+    const origin = req.headers.origin || `https://${req.headers.host || "date-slot.vercel.app"}`;
+    const editUrl = `${origin}/u/${profile.username}/edit`;
+    const notif = bookingNotificationEmail({
+      bookerName: name.trim(),
+      creatorName: profile.display_name,
+      date: slot.date,
+      timeStart: slot.time_start?.slice(0, 5),
+      timeEnd: slot.time_end?.slice(0, 5),
+      activity: finalActivity,
+      bookerEmail: email.trim(),
+      editUrl,
+    });
+    await sendEmail({ to: profile.email, ...notif });
+  }
+
+  return res.status(200).json({ success: true, status: "pending", activity: finalActivity });
 }

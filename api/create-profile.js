@@ -8,7 +8,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { username, display_name, password } = req.body;
+  const { username, display_name, password, email } = req.body;
   if (!username?.trim() || !display_name?.trim() || !password?.trim()) {
     return res.status(400).json({ error: "Missing required fields" });
   }
@@ -41,6 +41,7 @@ export default async function handler(req, res) {
       username: username.trim().toLowerCase(),
       display_name: display_name.trim(),
       password_hash,
+      email: email?.trim() || null,
     })
     .select()
     .single();
@@ -53,5 +54,6 @@ export default async function handler(req, res) {
     id: data.id,
     username: data.username,
     display_name: data.display_name,
+    email: data.email,
   });
 }
