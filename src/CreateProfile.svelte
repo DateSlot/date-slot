@@ -113,10 +113,10 @@ function goToEdit() {
     <div class="flex flex-col gap-5">
       <div class="flex flex-col gap-1.5 text-left">
         <label class="label" for="username">Username</label>
-        <div class="flex items-stretch border-2 border-pink-light rounded-full bg-white focus-within:border-purple transition-[border-color] duration-150">
-          <span class="flex items-center px-3 text-sm text-text-light bg-pink-pale whitespace-nowrap rounded-l-full shrink-0">{window.location.host}/u/</span>
+        <div class="flex items-stretch border-2 border-pink-light rounded-full bg-white focus-within:border-purple transition-[border-color] duration-150 overflow-hidden">
+          <span class="flex items-center px-3 text-sm text-text-light bg-pink-pale whitespace-nowrap shrink-0">{window.location.host}/u/</span>
           <input id="username" type="text" bind:value={username}
-            class="font-fredoka text-lg px-3.5 py-3.5 border-0 bg-transparent text-text flex-1 outline-none rounded-r-full min-w-0"
+            class="font-fredoka text-lg px-3.5 py-3.5 border-0 bg-transparent text-text flex-1 outline-none min-w-0"
             placeholder="your-name" />
         </div>
         {#if usernameErr}
