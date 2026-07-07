@@ -148,7 +148,7 @@ onMount(() => {
 
   const path = window.location.pathname;
 
-  const editMatch = path.match(/^\/u\/([^/]+)\/edit$/);
+  const editMatch = path.match(/^\/u\/([^/]+)\/edit\/?$/);
   if (editMatch) {
     page = "profile-edit";
     pageParams = { username: editMatch[1] };
@@ -156,7 +156,7 @@ onMount(() => {
     return;
   }
 
-  const profileMatch = path.match(/^\/u\/([^/]+)$/);
+  const profileMatch = path.match(/^\/u\/([^/]+)\/?$/);
   if (profileMatch) {
     page = "profile-book";
     pageParams = { username: profileMatch[1] };
