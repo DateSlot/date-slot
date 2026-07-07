@@ -5,40 +5,46 @@ import CreateProfile from "./CreateProfile.svelte";
 import PublicBookingPage from "./PublicBookingPage.svelte";
 import ProfileEditor from "./ProfileEditor.svelte";
 
-type Page = "home" | "admin" | "create-profile" | "profile-book" | "profile-edit";
+
+type Page =
+	| "home"
+	| "admin"
+	| "create-profile"
+	| "profile-book"
+	| "profile-edit";
 let page: Page = $state("home");
 let pageParams = $state<Record<string, string>>({});
 let manageUsername = $state("");
 
 function goToManage() {
-  if (manageUsername.trim()) {
-    window.location.href = `/u/${manageUsername.trim().toLowerCase()}/edit`;
-  }
+	if (manageUsername.trim()) {
+		window.location.href = `/u/${manageUsername.trim().toLowerCase()}/edit`;
+	}
 }
 
 onMount(() => {
-  const path = window.location.pathname;
+	const path = window.location.pathname;
 
-  const editMatch = path.match(/^\/u\/([^/]+)\/edit$/);
-  if (editMatch) {
-    page = "profile-edit";
-    pageParams = { username: editMatch[1] };
-    document.title = "Manage your slots";
-    return;
-  }
+	const editMatch = path.match(/^\/u\/([^/]+)\/edit$/);
+	if (editMatch) {
+		page = "profile-edit";
+		pageParams = { username: editMatch[1] };
+		document.title = "Manage your slots";
+		return;
+	}
 
-  const profileMatch = path.match(/^\/u\/([^/]+)$/);
-  if (profileMatch) {
-    page = "profile-book";
-    pageParams = { username: profileMatch[1] };
-    return;
-  }
+	const profileMatch = path.match(/^\/u\/([^/]+)$/);
+	if (profileMatch) {
+		page = "profile-book";
+		pageParams = { username: profileMatch[1] };
+		return;
+	}
 
-  if (path === "/create") {
-    page = "create-profile";
-    document.title = "Create your booking page";
-    return;
-  }
+	if (path === "/create") {
+		page = "create-profile";
+		document.title = "Create your booking page";
+		return;
+	}
 });
 </script>
 
@@ -46,11 +52,18 @@ onMount(() => {
   <div class="card">
     <div class="deco">✧  ♡  ★  ♡  ✧</div>
     <h1>Date Slot ✨</h1>
-    <p class="sub">Create your personal booking page and share the link with someone special 💕</p>
-    <div class="flex-col">
-      <a href="/create" class="btn primary">Create your page ✨</a>
-      <div class="manage-row">
+    <div class="flex-col content-stretch border-solid">
+      <div>
+        <p class="sub">Create your personal booking page and share the link with someone special 💕</p>
+      </div>
+      <div>
+        <a href="/create" class="btn primary">Create your page ✨</a>
+      </div>
+      <div class="">
         <span class="manage-label">Already have one?</span>
+
+      </div>
+      <div class="">
         <input type="text" class="manage-input" placeholder="your-username" bind:value={manageUsername}
           onkeydown={(e) => e.key === "Enter" && goToManage()} />
         <button class="btn small" onclick={goToManage} disabled={!manageUsername.trim()}>Manage</button>
@@ -107,12 +120,12 @@ onMount(() => {
     line-height: 1.5;
   }
 
-  .flex-col {
+  /* .flex-col {
     display: flex;
     flex-direction: column;
     gap: 16px;
     align-items: center;
-  }
+  } */
 
   .btn {
     font-family: "Fredoka", sans-serif;
@@ -162,17 +175,6 @@ onMount(() => {
     cursor: default;
   }
 
-  .manage-row {
-    background: var(--pink-pale);
-    padding: 12px 18px;
-    border-radius: 20px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
   .manage-label {
     font-size: 14px;
     color: var(--text-light);
@@ -183,7 +185,7 @@ onMount(() => {
     font-size: 14px;
     padding: 8px 14px;
     border: 2px solid var(--pink-light);
-    border-radius: 14px;
+    border-radius: 60px;
     background: white;
     color: var(--text);
     width: 160px;
