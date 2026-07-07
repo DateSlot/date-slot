@@ -1,5 +1,6 @@
 <script lang="ts">
-import { onMount } from "svelte";
+import { onMount, tick } from "svelte";
+import { gsap } from "gsap";
 import confetti from "canvas-confetti";
 import type { AvailableSlot, SlotsByDate } from "./lib/types.ts";
 import { ACTIVITY_OPTIONS, CUSTOM_ACTIVITY } from "./lib/types.ts";
@@ -21,6 +22,7 @@ let bookerActivity = $state("");
 let bookerCustomActivity = $state("");
 let submitting = $state(false);
 let submitError = $state("");
+let formEl = $state<HTMLElement>();
 
 onMount(async () => {
   loading = true;
@@ -37,9 +39,21 @@ onMount(async () => {
 });
 
 function selectSlot(slot: AvailableSlot) {
-  selectedSlot = selectedSlot?.id === slot.id ? null : slot;
+  const wasSelected = selectedSlot?.id === slot.id;
   bookerActivity = "";
   bookerCustomActivity = "";
+  if (wasSelected) {
+    gsap.to(formEl, { opacity: 0, y: 20, duration: 0.2, ease: "power2.in", onComplete: () => {
+      gsap.set(formEl, { display: "none" });
+      selectedSlot = null;
+    }});
+  } else {
+    selectedSlot = slot;
+    tick().then(() => {
+      gsap.set(formEl, { display: "flex", opacity: 0, y: 20 });
+      gsap.to(formEl, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" });
+    });
+  }
 }
 
 function validateEmail(v: string) {
@@ -148,8 +162,8 @@ function activityLabel(a: string | null) {
       </div>
     {/if}
 
-    {#if selectedSlot}
-      <div class="flex flex-col gap-4 mt-6 pt-5 border-t border-pink-pale">
+    <div bind:this={formEl} style="display:none" class="flex flex-col gap-4 mt-6 pt-5 border-t border-pink-pale">
+      {#if selectedSlot}
         <p class="text-base font-semibold text-purple text-center m-0">
           {fmtDate(selectedSlot.date)} · 🕐 {fmtTime(selectedSlot.time_start)} – {fmtTime(selectedSlot.time_end)}
         </p>
@@ -193,8 +207,8 @@ function activityLabel(a: string | null) {
         <button class="btn btn-primary" disabled={!bookingName.trim() || !bookerEmail.trim() || submitting} onclick={confirmBooking}>
           {submitting ? "Sending..." : "Request date 💖"}
         </button>
-      </div>
-    {/if}
+      {/if}
+    </div>
     <div class="mt-5 pt-3.5 border-t border-pink-pale">
       <a href="/u/{username}/edit" class="edit-link">Manage 🔐</a>
     </div>
