@@ -1,5 +1,4 @@
 <script lang="ts">
-import { gsap } from "gsap";
 import { onMount } from "svelte";
 import confetti from "canvas-confetti";
 import type { AvailableSlot, SlotsByDate } from "./lib/types.ts";
@@ -7,83 +6,11 @@ import { ACTIVITY_OPTIONS, CUSTOM_ACTIVITY } from "./lib/types.ts";
 
 let { username }: { username: string } = $props();
 
-type Step = "ask" | "when" | "done";
-let step: Step = $state("ask");
-
 let displayName = $state("");
 let likes = $state("");
 let loading = $state(false);
 let error = $state("");
-
-let noBtn: HTMLElement = $state() as unknown as HTMLElement;
-let tx = 0;
-let ty = 0;
-let panic = 0.3;
-let returning = false;
-let idleTimer: ReturnType<typeof setTimeout> | null = null;
-let slowTween: gsap.core.Tween | null = null;
-let isTouch = false;
-
-function cancelSlow() {
-  if (slowTween) {
-    slowTween.kill();
-    slowTween = null;
-    tx = gsap.getProperty(noBtn, "x") as number;
-    ty = gsap.getProperty(noBtn, "y") as number;
-  }
-}
-
-function returnHome(speed: "fast" | "slow") {
-  if (speed === "fast") {
-    returning = true;
-    gsap.killTweensOf(noBtn);
-    gsap.to(noBtn, { x: 0, y: 0, scale: 1, duration: 0.6, ease: "power2.out", onComplete: () => { returning = false; } });
-    tx = 0; ty = 0;
-  } else {
-    slowTween = gsap.to(noBtn, { x: 0, y: 0, scale: 1, duration: 2.5, ease: "power1.out", onComplete: () => { slowTween = null; } });
-    tx = 0; ty = 0;
-  }
-}
-
-function handlePointer(clientX: number, clientY: number) {
-  if (!noBtn || isTouch) return;
-  cancelSlow();
-  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-  const r = noBtn.getBoundingClientRect();
-  const cx = r.left + r.width / 2;
-  const cy = r.top + r.height / 2;
-  const dx = cx - clientX;
-  const dy = cy - clientY;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-
-  if (!returning && dist > 0 && dist < 200) {
-    const nx = dx / dist, ny = dy / dist;
-    const t = 1 - dist / 200;
-    const strength = t * t * t * panic * 400;
-    let newTx = tx + strength * nx, newTy = ty + strength * ny;
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const btnW = r.width, btnH = r.height, margin = 20;
-    const origLeft = r.left - (tx || 0), origTop = r.top - (ty || 0);
-    if (origLeft + newTx < margin) newTx = tx + (margin - origLeft);
-    if (origLeft + newTx + btnW > vw - margin) newTx = tx + (vw - margin - btnW - origLeft);
-    if (origTop + newTy < margin) newTy = ty + (margin - origTop);
-    if (origTop + newTy + btnH > vh - margin) newTy = ty + (vh - margin - btnH - origTop);
-    gsap.killTweensOf(noBtn);
-    gsap.to(noBtn, { x: newTx, y: newTy, scale: 0.85, duration: 0.07, ease: "power2.out", overwrite: "auto" });
-    tx = newTx; ty = newTy;
-    panic = Math.max(0.15, panic * 0.94);
-  }
-  if (!returning && (tx !== 0 || ty !== 0)) {
-    idleTimer = setTimeout(() => { if (!returning && (tx !== 0 || ty !== 0)) returnHome("slow"); }, 800);
-  }
-}
-function handlePointerLeave() {
-  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-  cancelSlow();
-  if (!returning && (tx !== 0 || ty !== 0)) returnHome("slow");
-}
-function handleTouchStart(e: TouchEvent) { isTouch = true; handlePointer(e.touches[0].clientX, e.touches[0].clientY); }
-function handleTouchMove(e: TouchEvent) { isTouch = true; handlePointer(e.touches[0].clientX, e.touches[0].clientY); }
+let done = $state(false);
 
 let slotsByDate: SlotsByDate = $state({});
 let availableDates: string[] = $state([]);
@@ -93,8 +20,6 @@ let bookingName: string = $state("");
 let bookerEmail: string = $state("");
 let bookerActivity = $state("");
 let bookerCustomActivity = $state("");
-let slotLoading = $state(false);
-let slotError = $state("");
 let submitting = $state(false);
 let submitError = $state("");
 
@@ -112,11 +37,6 @@ onMount(async () => {
   } catch { error = "Could not load profile"; }
   finally { loading = false; }
 });
-
-function sayYes() {
-  step = "when";
-  confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"] });
-}
 
 function selectSlot(slot: AvailableSlot) {
   selectedSlot = selectedSlot?.id === slot.id ? null : slot;
@@ -149,7 +69,7 @@ async function confirmBooking() {
       submitError = data.error || "Something went wrong. Try again?";
       return;
     }
-    step = "done";
+    done = true;
     confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"] });
     try { window.turnstile?.reset(); } catch { /* ignore */ }
   } catch {
@@ -174,36 +94,41 @@ function activityLabel(a: string | null) {
   {/if}
 </svelte:head>
 
-<svelte:window onmousemove={(e) => handlePointer(e.clientX, e.clientY)} onmouseleave={handlePointerLeave}
-  ontouchstart={handleTouchStart} ontouchmove={handleTouchMove} />
-
 {#if loading}
   <div class="card"><div class="deco">✧  ♡  ★  ♡  ✧</div><p class="sub">Loading...</p></div>
 {:else if error}
   <div class="card"><div class="deco">✧  ♡  ★  ♡  ✧</div><h1 class="title">Oops! 💔</h1><p class="sub">{error}</p></div>
-{:else if step === "ask"}
+{:else if done}
+  <div class="card" style="padding:56px 40px 32px">
+    <div class="deco">✧  ♡  ★  ♡  ✧</div>
+    <h1 class="title">Request sent! 💕</h1>
+    <p class="sub">
+      {bookingName}
+      {#if selectedSlot?.activity}&nbsp;💖&nbsp; {activityLabel(selectedSlot.activity)}
+      {:else if bookerActivity}&nbsp;💖&nbsp; {bookerActivity === CUSTOM_ACTIVITY ? bookerCustomActivity : ACTIVITY_OPTIONS.find(o => o.id === bookerActivity)?.emoji + " " + ACTIVITY_OPTIONS.find(o => o.id === bookerActivity)?.title}
+      {/if}
+    </p>
+    <p class="sub">
+      📅 {selectedSlot ? fmtDate(selectedSlot.date) : ""}<br>
+      🕐 {selectedSlot ? fmtTime(selectedSlot.time_start) + " – " + fmtTime(selectedSlot.time_end) : ""}
+    </p>
+    <p class="text-6xl m-0 mb-2 leading-none">🎉</p>
+    <p class="sub">Waiting for {displayName} to confirm your date! You'll get an email when they respond 💖</p>
+    <div class="mt-5 pt-3.5 border-t border-pink-pale">
+      <a href="/" class="edit-link">Home 🏠</a>
+    </div>
+  </div>
+{:else}
   <div class="card" style="padding-bottom:24px">
     <div class="deco">✿  ♡  ☆  ♡  ✿</div>
-    <h1 class="title">Will you go<br>on a date with me?</h1>
+    <h1 class="title">Will you go on a date with me?</h1>
     <p class="sub">— {displayName} 💕</p>
+
     {#if likes}
       <div class="bg-pink-pale rounded-2xl px-4 py-3 -mt-5 mb-7 max-w-[340px] mx-auto">
         <p class="text-sm text-text m-0 leading-relaxed">💖 {likes}</p>
       </div>
     {/if}
-    <div class="flex justify-center gap-4 items-center">
-      <button class="btn btn-primary px-9 py-3" onclick={sayYes}>Yes 💖</button>
-      <button bind:this={noBtn} class="btn border-2 border-pink-light bg-white text-pink touch-none select-none hover:bg-pink-pale px-9 py-3" aria-label="No">No 💔</button>
-    </div>
-    <div class="mt-5 pt-3.5 border-t border-pink-pale">
-      <a href="/u/{username}/edit" class="text-sm font-medium text-pink-light no-underline hover:text-purple transition-colors duration-150">Manage 🔐</a>
-    </div>
-  </div>
-{:else if step === "when"}
-  <div class="card" style="padding-bottom:24px">
-    <div class="deco">✧  ♡  ★  ♡  ✧</div>
-    <h1 class="title">Pick a time 📅</h1>
-    <p class="sub">— {displayName} 💕</p>
 
     {#if availableDates.length === 0}
       <p class="sub">No available slots right now. Check back soon! 💕</p>
@@ -280,26 +205,6 @@ function activityLabel(a: string | null) {
     {/if}
     <div class="mt-5 pt-3.5 border-t border-pink-pale">
       <a href="/u/{username}/edit" class="edit-link">Manage 🔐</a>
-    </div>
-  </div>
-{:else if step === "done"}
-  <div class="card" style="padding:56px 40px 32px">
-    <div class="deco">✧  ♡  ★  ♡  ✧</div>
-    <h1 class="title">Request sent! 💕</h1>
-    <p class="sub">
-      {bookingName}
-      {#if selectedSlot?.activity}&nbsp;💖&nbsp; {activityLabel(selectedSlot.activity)}
-      {:else if bookerActivity}&nbsp;💖&nbsp; {bookerActivity === CUSTOM_ACTIVITY ? bookerCustomActivity : ACTIVITY_OPTIONS.find(o => o.id === bookerActivity)?.emoji + " " + ACTIVITY_OPTIONS.find(o => o.id === bookerActivity)?.title}
-      {/if}
-    </p>
-    <p class="sub">
-      📅 {selectedSlot ? fmtDate(selectedSlot.date) : ""}<br>
-      🕐 {selectedSlot ? fmtTime(selectedSlot.time_start) + " – " + fmtTime(selectedSlot.time_end) : ""}
-    </p>
-    <p class="text-6xl m-0 mb-2 leading-none">🎉</p>
-    <p class="sub">Waiting for {displayName} to confirm your date! You'll get an email when they respond 💖</p>
-    <div class="mt-5 pt-3.5 border-t border-pink-pale">
-      <a href="/" class="edit-link">Home 🏠</a>
     </div>
   </div>
 {/if}
