@@ -138,15 +138,27 @@ async function confirmBooking() {
   submitting = true;
   submitError = "";
   try {
-    const token = window.turnstile?.getResponse();
+    console.log("getting turnstile token");
+    let token: string | undefined;
+    try { token = window.turnstile?.getResponse(); } catch (e) { console.error("turnstile error", e); }
+    console.log("turnstile token:", token);
     const body: Record<string, string> = { slot_id: selectedSlot.id, name: bookingName.trim(), email: bookerEmail.trim() };
     if (token) body.turnstile_token = token;
     if (!selectedSlot.activity) {
       body.activity = bookerActivity === CUSTOM_ACTIVITY ? bookerCustomActivity.trim() : bookerActivity;
     }
-    const res = await fetch("/api/booking", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    });
+    console.log("body ready, fetching /api/booking", body);
+    let res: Response;
+    try {
+      res = await fetch("/api/booking", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      console.log("fetch response status:", res.status);
+    } catch (fetchErr) {
+      console.error("fetch threw:", fetchErr);
+      submitError = "Couldn't reach the server. Check your connection and try again.";
+      return;
+    }
     if (res.status === 409) { submitError = "That slot was just taken! Pick another 💕"; selectedSlot = null; return; }
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -156,7 +168,8 @@ async function confirmBooking() {
     step = "done";
     confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"] });
     try { window.turnstile?.reset(); } catch { /* ignore */ }
-  } catch {
+  } catch (err) {
+    console.error("confirmBooking outer catch:", err);
     submitError = "Couldn't reach the server. Check your connection and try again.";
   } finally { submitting = false; }
 }
