@@ -129,36 +129,20 @@ function validateEmail(v: string) {
 }
 
 async function confirmBooking() {
-  console.log("confirmBooking called", { selectedSlot: !!selectedSlot, name: bookingName, email: bookerEmail });
-  if (!selectedSlot || !bookingName.trim() || !bookerEmail.trim()) {
-    console.log("confirmBooking early return", { selectedSlot: !!selectedSlot, name: bookingName.trim(), email: bookerEmail.trim() });
-    return;
-  }
+  if (!selectedSlot || !bookingName.trim() || !bookerEmail.trim()) return;
   if (!validateEmail(bookerEmail)) { submitError = "Please enter a valid email address"; return; }
   submitting = true;
   submitError = "";
   try {
-    console.log("getting turnstile token");
-    let token: string | undefined;
-    try { token = window.turnstile?.getResponse(); } catch (e) { console.error("turnstile error", e); }
-    console.log("turnstile token:", token);
+    const token = window.turnstile?.getResponse();
     const body: Record<string, string> = { slot_id: selectedSlot.id, name: bookingName.trim(), email: bookerEmail.trim() };
     if (token) body.turnstile_token = token;
     if (!selectedSlot.activity) {
       body.activity = bookerActivity === CUSTOM_ACTIVITY ? bookerCustomActivity.trim() : bookerActivity;
     }
-    console.log("body ready, fetching /api/booking", body);
-    let res: Response;
-    try {
-      res = await fetch("/api/booking", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-      });
-      console.log("fetch response status:", res.status);
-    } catch (fetchErr) {
-      console.error("fetch threw:", fetchErr);
-      submitError = "Couldn't reach the server. Check your connection and try again.";
-      return;
-    }
+    const res = await fetch("/api/booking", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
     if (res.status === 409) { submitError = "That slot was just taken! Pick another 💕"; selectedSlot = null; return; }
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -168,8 +152,7 @@ async function confirmBooking() {
     step = "done";
     confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"] });
     try { window.turnstile?.reset(); } catch { /* ignore */ }
-  } catch (err) {
-    console.error("confirmBooking outer catch:", err);
+  } catch {
     submitError = "Couldn't reach the server. Check your connection and try again.";
   } finally { submitting = false; }
 }
@@ -186,7 +169,9 @@ function activityLabel(a: string | null) {
 </script>
 
 <svelte:head>
+  {#if import.meta.env.VITE_TURNSTILE_SITE_KEY}
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  {/if}
 </svelte:head>
 
 <svelte:window onmousemove={(e) => handlePointer(e.clientX, e.clientY)} onmouseleave={handlePointerLeave}
