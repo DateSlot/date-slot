@@ -14,7 +14,6 @@ let done = $state(false);
 
 let slotsByDate: SlotsByDate = $state({});
 let availableDates: string[] = $state([]);
-let selectedDate: string = $state("");
 let selectedSlot: AvailableSlot | null = $state(null);
 let bookingName: string = $state("");
 let bookerEmail: string = $state("");
@@ -33,7 +32,6 @@ onMount(async () => {
     likes = data.profile.likes || "";
     slotsByDate = data.slots || {};
     availableDates = Object.keys(slotsByDate).sort();
-    if (availableDates.length > 0) selectedDate = availableDates[0];
   } catch { error = "Could not load profile"; }
   finally { loading = false; }
 });
@@ -133,74 +131,68 @@ function activityLabel(a: string | null) {
     {#if availableDates.length === 0}
       <p class="sub">No available slots right now. Check back soon! 💕</p>
     {:else}
-      <div class="flex flex-col gap-3.5">
-        <div class="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
-          {#each availableDates as date}
-            <button
-              class="chip"
-              class:active={date === selectedDate}
-              onclick={() => { selectedDate = date; selectedSlot = null; }}>
-              {new Date(date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-            </button>
-          {/each}
+      <div class="flex flex-col gap-5">
+        {#each availableDates as date}
+          <div>
+            <p class="text-base font-semibold text-purple text-center m-0 mb-2">{fmtDate(date)}</p>
+            <div class="flex flex-wrap gap-2 justify-center">
+              {#each slotsByDate[date] as slot}
+                <button class="slot-btn" class:active={selectedSlot?.id === slot.id} onclick={() => selectSlot(slot)}>
+                  🕐 {fmtTime(slot.time_start)} – {fmtTime(slot.time_end)}
+                  {#if slot.activity}<br><span class="slot-activity">{activityLabel(slot.activity)}</span>{/if}
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
+    {#if selectedSlot}
+      <div class="flex flex-col gap-4 mt-6 pt-5 border-t border-pink-pale">
+        <p class="text-base font-semibold text-purple text-center m-0">
+          {fmtDate(selectedSlot.date)} · 🕐 {fmtTime(selectedSlot.time_start)} – {fmtTime(selectedSlot.time_end)}
+        </p>
+        <div class="flex flex-col gap-1.5 text-left">
+          <label class="label" for="name">Your name</label>
+          <input id="name" type="text" bind:value={bookingName}
+            class="input" placeholder="e.g. Kuromi~" />
+        </div>
+        <div class="flex flex-col gap-1.5 text-left">
+          <label class="label" for="email">Your email</label>
+          <input id="email" type="email" bind:value={bookerEmail}
+            class="input" placeholder="you@email.com"
+            onkeydown={(e) => e.key === "Enter" && confirmBooking()} />
         </div>
 
-        {#if selectedDate}
-          <p class="text-lg font-medium text-purple text-center m-0">{fmtDate(selectedDate)}</p>
-          <div class="flex flex-wrap gap-2 justify-center">
-            {#each slotsByDate[selectedDate] as slot}
-              <button class="slot-btn" class:active={selectedSlot?.id === slot.id} onclick={() => selectSlot(slot)}>
-                🕐 {fmtTime(slot.time_start)} – {fmtTime(slot.time_end)}
-                {#if slot.activity}<br><span class="slot-activity">{activityLabel(slot.activity)}</span>{/if}
-              </button>
-            {/each}
+        {#if !selectedSlot.activity}
+          <div class="flex flex-col gap-1.5 text-left">
+            <p class="label">Pick an activity</p>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="act-opt" class:active={bookerActivity === ""}
+                onclick={() => { bookerActivity = ""; bookerCustomActivity = ""; }}>Surprise 🎲</button>
+              {#each ACTIVITY_OPTIONS as opt}
+                <button class="act-opt" class:active={bookerActivity === opt.id}
+                  onclick={() => { bookerActivity = opt.id; bookerCustomActivity = ""; }}>
+                  {opt.emoji} {opt.title}
+                </button>
+              {/each}
+              <button class="act-opt" class:active={bookerActivity === CUSTOM_ACTIVITY}
+                onclick={() => bookerActivity = CUSTOM_ACTIVITY}>✏️ Custom</button>
+            </div>
+            {#if bookerActivity === CUSTOM_ACTIVITY}
+              <input type="text" bind:value={bookerCustomActivity} class="input" placeholder="e.g. Bowling 🎳" aria-label="Custom activity" />
+            {/if}
           </div>
         {/if}
 
-        {#if selectedSlot}
-          <div class="flex flex-col gap-4">
-            <div class="flex flex-col gap-1.5 text-left">
-              <label class="label" for="name">Your name</label>
-              <input id="name" type="text" bind:value={bookingName}
-                class="input" placeholder="e.g. Kuromi~" />
-            </div>
-            <div class="flex flex-col gap-1.5 text-left">
-              <label class="label" for="email">Your email</label>
-              <input id="email" type="email" bind:value={bookerEmail}
-                class="input" placeholder="you@email.com"
-                onkeydown={(e) => e.key === "Enter" && confirmBooking()} />
-            </div>
-
-            {#if !selectedSlot.activity}
-              <div class="flex flex-col gap-1.5 text-left">
-                <p class="label">Pick an activity</p>
-                <div class="flex flex-wrap gap-1.5">
-                  <button class="act-opt" class:active={bookerActivity === ""}
-                    onclick={() => { bookerActivity = ""; bookerCustomActivity = ""; }}>Surprise 🎲</button>
-                  {#each ACTIVITY_OPTIONS as opt}
-                    <button class="act-opt" class:active={bookerActivity === opt.id}
-                      onclick={() => { bookerActivity = opt.id; bookerCustomActivity = ""; }}>
-                      {opt.emoji} {opt.title}
-                    </button>
-                  {/each}
-                  <button class="act-opt" class:active={bookerActivity === CUSTOM_ACTIVITY}
-                    onclick={() => bookerActivity = CUSTOM_ACTIVITY}>✏️ Custom</button>
-                </div>
-                {#if bookerActivity === CUSTOM_ACTIVITY}
-                  <input type="text" bind:value={bookerCustomActivity} class="input" placeholder="e.g. Bowling 🎳" aria-label="Custom activity" />
-                {/if}
-              </div>
-            {/if}
-
-            {#if import.meta.env.VITE_TURNSTILE_SITE_KEY}
-              <div id="turnstile-widget" class="cf-turnstile" data-sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY} style="margin:12px 0"></div>
-            {/if}
-            {#if submitError}<p class="form-error" role="alert">{submitError}</p>{/if}
-            <button class="btn btn-primary" disabled={!bookingName.trim() || !bookerEmail.trim() || submitting} onclick={confirmBooking}>
-              {submitting ? "Sending..." : "Request date 💖"}
-            </button>
-          </div>
+        {#if import.meta.env.VITE_TURNSTILE_SITE_KEY}
+          <div id="turnstile-widget" class="cf-turnstile" data-sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY} style="margin:12px 0"></div>
         {/if}
+        {#if submitError}<p class="form-error" role="alert">{submitError}</p>{/if}
+        <button class="btn btn-primary" disabled={!bookingName.trim() || !bookerEmail.trim() || submitting} onclick={confirmBooking}>
+          {submitting ? "Sending..." : "Request date 💖"}
+        </button>
       </div>
     {/if}
     <div class="mt-5 pt-3.5 border-t border-pink-pale">
@@ -218,26 +210,7 @@ function activityLabel(a: string | null) {
     margin: 0 0 8px;
     line-height: 1.3;
   }
-  .chip {
-    font-family: "Fredoka", sans-serif;
-    font-size: 14px;
-    font-weight: 500;
-    padding: 10px 18px;
-    border: 2px solid var(--color-pink-light);
-    border-radius: 20px;
-    background: white;
-    color: var(--color-text-light);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s;
-    flex-shrink: 0;
-  }
-  .chip:hover { border-color: var(--color-pink); background: var(--color-pink-pale); }
-  .chip.active {
-    background: linear-gradient(135deg, var(--color-pink), var(--color-purple-light));
-    color: white;
-    border-color: transparent;
-  }
+  .sub { font-size: 16px; }
   .slot-btn {
     font-family: "Fredoka", sans-serif;
     font-size: 15px;
@@ -286,7 +259,6 @@ function activityLabel(a: string | null) {
     color: white;
     border-color: transparent;
   }
-  .chip:focus-visible,
   .slot-btn:focus-visible,
   .act-opt:focus-visible,
   .edit-link:focus-visible {
