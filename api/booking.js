@@ -5,22 +5,33 @@ import { verifyTurnstile } from "./_verify-turnstile.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
   const limit = rateLimit(req);
   if (!limit.allowed) {
     return res.status(429).json({ error: "Too many requests. Try again later.", ...limit });
   }
 
-  const { turnstile_token } = req.body;
+  const { turnstile_token } = req.body || {};
   if (turnstile_token) {
-    const verification = await verifyTurnstile(turnstile_token);
+    let verification;
+    try {
+      verification = await verifyTurnstile(turnstile_token);
+    } catch {
+      return res.status(400).json({ error: "Verification failed" });
+    }
     if (!verification.success) {
       return res.status(400).json({ error: "Verification failed" });
     }
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
   }
 
   const { slot_id, name, email, activity } = req.body;
