@@ -144,13 +144,16 @@ async function confirmBooking() {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
     if (res.status === 409) { submitError = "That slot was just taken! Pick another 💕"; selectedSlot = null; return; }
-    if (!res.ok) throw new Error("Failed to request");
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      submitError = data.error || "Something went wrong. Try again?";
+      return;
+    }
     step = "done";
     confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"] });
     try { window.turnstile?.reset(); } catch { /* ignore */ }
   } catch {
-    step = "done";
-    confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"] });
+    submitError = "Couldn't reach the server. Check your connection and try again.";
   } finally { submitting = false; }
 }
 

@@ -1,7 +1,7 @@
 const store = new Map()
 let lastCleanup = Date.now()
 
-export const DEFAULTS = { max: 5, windowMs: 60000 }
+export const DEFAULTS = { max: 20, windowMs: 60000 }
 
 export function rateLimit(req, options = {}) {
   const { max = DEFAULTS.max, windowMs = DEFAULTS.windowMs } = options
@@ -18,8 +18,9 @@ export function rateLimit(req, options = {}) {
 
   const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim()
             || req.headers["x-real-ip"]
+            || req.socket?.remoteAddress
             || req.connection?.remoteAddress
-            || "unknown"
+            || `req_${Date.now()}`
 
   if (!store.has(ip)) {
     store.set(ip, [])
