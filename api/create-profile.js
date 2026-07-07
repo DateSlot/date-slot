@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { getSupabase } from "./_supabase.js";
 import { rateLimit } from "./_rate-limit.js";
+import { sendEmail, registrationConfirmationEmail } from "./_email.js";
 import { verifyTurnstile } from "./_verify-turnstile.js";
 
 export default async function handler(req, res) {
@@ -63,6 +64,18 @@ export default async function handler(req, res) {
 
   if (error) {
     return res.status(500).json({ error: error.message });
+  }
+
+  if (data.email) {
+    const origin = req.headers.origin || `https://${req.headers.host || "date-slot.vercel.app"}`;
+    const manageUrl = `${origin}/u/${data.username}/edit`;
+    const welcome = registrationConfirmationEmail({
+      username: data.username,
+      displayName: data.display_name,
+      email: data.email,
+      manageUrl,
+    });
+    await sendEmail({ to: data.email, ...welcome });
   }
 
   return res.status(201).json({

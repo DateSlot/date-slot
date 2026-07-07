@@ -72,6 +72,30 @@ export function confirmationEmail({ bookerName, creatorName, date, timeStart, ti
   };
 }
 
+export function registrationConfirmationEmail({ username, displayName, email, manageUrl }) {
+  return {
+    subject: "Welcome to Date Slot! 🎉",
+    text: [
+      `Hey ${displayName}! 💖`,
+      ``,
+      `Your page is ready! 🎉`,
+      ``,
+      `🌐 Your public page: https://date-slot.vercel.app/u/${username}`,
+      `🔐 Manage your slots: ${manageUrl}`,
+      ``,
+      `Here's how it works:`,
+      `1. Share your page link with someone special`,
+      `2. They'll pick a slot and send a request`,
+      `3. You get an email notification — accept or deny from your manage page`,
+      ``,
+      `✨ Make sure to add some available slots so people can book you!`,
+      ``,
+      `Have fun! 💕`,
+      `— Date Slot`,
+    ].join("\n"),
+  };
+}
+
 export function denialEmail({ bookerName, creatorName, reason }) {
   return {
     subject: `Update on your date request from ${creatorName}`,

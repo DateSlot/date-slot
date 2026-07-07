@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { sendEmail, bookingNotificationEmail, confirmationEmail, denialEmail } from "../api/_email.js";
+import { sendEmail, bookingNotificationEmail, confirmationEmail, denialEmail, registrationConfirmationEmail } from "../api/_email.js";
 import { rateLimit } from "../api/_rate-limit.js";
 import { verifyTurnstile } from "../api/_verify-turnstile.js";
 
@@ -200,6 +200,18 @@ app.post("/api/create-profile", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+
+  if (data.email) {
+    const origin = req.headers.origin || `https://${req.headers.host || "date-slot.vercel.app"}`;
+    const manageUrl = `${origin}/u/${data.username}/edit`;
+    const welcome = registrationConfirmationEmail({
+      username: data.username,
+      displayName: data.display_name,
+      email: data.email,
+      manageUrl,
+    });
+    await sendEmail({ to: data.email, ...welcome });
+  }
 
   res.status(201).json({ id: data.id, username: data.username, display_name: data.display_name, email: data.email });
 });
