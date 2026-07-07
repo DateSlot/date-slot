@@ -24,9 +24,33 @@ let createUsername = $state("");
 let createDisplayName = $state("");
 let createEmail = $state("");
 let createPassword = $state("");
+let createShowPw = $state(false);
 let creating = $state(false);
 let createError = $state("");
 let createdProfile = $state<{ username: string; display_name: string; email: string | null } | null>(null);
+
+let usernameErr = $derived(createUsername.trim() && !/^[a-z0-9-]+$/.test(createUsername.trim())
+  ? "Only lowercase letters, numbers, and hyphens" : "");
+let emailErr = $derived(createEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(createEmail.trim())
+  ? "Please enter a valid email address" : "");
+
+const PASSPHRASE_WORDS = [
+  "cherry","blossom","sunset","rainbow","butterfly","honey","moonlight",
+  "starlight","cupcake","bubble","garden","ocean","crystal","velvet",
+  "caramel","lollipop","daisy","maple","amber","clover","pixie","breeze",
+  "coral","pearl","tulip","sugar","sparkle","twilight","waffle","pudding",
+  "cotton","candy","jelly","snuggle","purr","whisker","pancake","muffin",
+  "cookie","sprinkle","button","ribbon","glitter","dewdrop","petal","cozy",
+  "fuzzy","gentle","merry","pepper","toffee",
+];
+
+function generatePassphrase() {
+  const words: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    words.push(PASSPHRASE_WORDS[Math.floor(Math.random() * PASSPHRASE_WORDS.length)]);
+  }
+  return words.join("-");
+}
 
 function goToManage() {
   if (manageUsername.trim()) {
@@ -69,8 +93,8 @@ async function createProfile() {
     createError = "Please enter a valid email address";
     return;
   }
-  if (!/^[a-z0-9-]+$/.test(createUsername.trim().toLowerCase())) {
-    createError = "Username: lowercase letters, numbers, and hyphens only";
+  if (!/^[a-z0-9-]+$/.test(createUsername.trim())) {
+    createError = "Only lowercase letters, numbers, and hyphens";
     return;
   }
   if (createPassword.trim().length < 4) {
@@ -147,24 +171,28 @@ onMount(() => {
 
 {#if page === "home"}
   <div class="card" style="padding-bottom:36px;overflow:hidden">
-    <div class="deco">✧  ♡  ★  ♡  ✧</div>
-    <h1 class="font-fredoka text-3xl font-semibold text-text mb-2">Date Slot ✨</h1>
-    <p class="sub">Create your personal booking page and share the link with someone special 💕</p>
-
     <div bind:this={manageEl} class="flex flex-col items-stretch gap-3">
-      <span class="text-sm text-text-light text-center">Already have a page?</span>
+      <div class="deco">✧  ♡  ★  ♡  ✧</div>
+      <h1 class="font-fredoka text-3xl font-semibold text-text mb-2">Date Slot ✨</h1>
+      <p class="sub">Create your personal booking page and share the link with someone special 💕</p>
+      <span class="text-sm text-text-light text-center">I already have a page:</span>
       <input type="text"
-        class="input"
-        placeholder="your-username"
-        bind:value={manageUsername}
+      class="input"
+      placeholder="your-username"
+      bind:value={manageUsername}
         onkeydown={(e) => e.key === "Enter" && goToManage()} />
-      <button class="btn btn-primary w-full" onclick={goToManage} disabled={!manageUsername.trim()}>Manage 🔐</button>
-      <button class="btn btn-primary w-full text-lg" onclick={startCreate}>🌟 Create my own page ✨</button>
-    </div>
+        <button class="btn btn-primary w-full" onclick={goToManage} disabled={!manageUsername.trim()}>Manage 🔐</button>
+        <span class="text-sm text-text-light text-center mt-4">I don't have one yet:</span>
+        <button class="btn btn-primary w-full text-lg" onclick={startCreate}>🌟 Create my own page ✨</button>
+        <p class="text-xs text-text-light mt-6">
+          Made with 💖 &mdash; <a href="https://github.com/DateSlot/date-slot" class="text-purple no-underline hover:underline">GitHub</a>
+        </p>
+      </div>
 
-    <div bind:this={createEl} class="flex flex-col items-stretch gap-3" style="display:none">
+      <div bind:this={createEl} class="flex flex-col items-stretch gap-3" style="display:none">
       {#if createdProfile}
         <div class="success-state">
+          <div class="deco">✧  ♡  ★  ♡  ✧</div>
           <h1 class="font-fredoka font-semibold text-2xl text-text mb-2 leading-tight">You're live! 🎉</h1>
           <p class="sub">Your booking page is ready</p>
           <div class="bg-pink-pale rounded-2xl p-4 mb-5">
@@ -174,11 +202,12 @@ onMount(() => {
           <button class="btn btn-primary" onclick={goToEdit}>Manage slots →</button>
         </div>
       {:else}
+        <div class="deco">✧  ♡  ★  ♡  ✧</div>
+        <h1 class="font-fredoka font-semibold text-2xl text-text mb-1 leading-tight">Create your page ✨</h1>
+        <p class="sub" style="margin-bottom:12px">Get your own link to share with others</p>
         <div class="flex justify-start">
           <button class="text-sm text-text-light bg-transparent border-none font-fredoka cursor-pointer px-1 py-0.5 hover:text-text transition-colors duration-150" onclick={cancelCreate}>← Back</button>
         </div>
-        <h1 class="font-fredoka font-semibold text-2xl text-text mb-1 leading-tight">Create your page ✨</h1>
-        <p class="sub" style="margin-bottom:12px">Get your own link to share with others</p>
         <div class="flex flex-col gap-3.5">
           <div class="flex flex-col gap-1.5 text-left">
             <label class="label" for="create-username">Username</label>
@@ -188,6 +217,9 @@ onMount(() => {
                 class="font-fredoka text-lg px-3.5 py-3 border-0 bg-transparent text-text flex-1 outline-none rounded-r-full"
                 placeholder="your-name" />
             </div>
+            {#if usernameErr}
+              <p class="form-error" style="text-align:left">{usernameErr}</p>
+            {/if}
           </div>
           <div class="flex flex-col gap-1.5 text-left">
             <label class="label" for="create-name">Display name</label>
@@ -198,13 +230,27 @@ onMount(() => {
             <label class="label" for="create-email">Notification email</label>
             <input id="create-email" type="email" bind:value={createEmail}
               class="input" placeholder="you@email.com" />
+            {#if emailErr}
+              <p class="form-error" style="text-align:left">{emailErr}</p>
+            {/if}
             <p class="text-xs text-text-light ml-1 opacity-70">Get notified when someone books you</p>
           </div>
           <div class="flex flex-col gap-1.5 text-left">
             <label class="label" for="create-pass">Edit password</label>
-            <input id="create-pass" type="password" bind:value={createPassword}
-              class="input" placeholder="at least 4 characters"
-              onkeydown={(e) => e.key === "Enter" && createProfile()} />
+            <div class="flex gap-2 items-stretch">
+              <div class="flex-1 relative">
+                <input id="create-pass" type={createShowPw ? "text" : "password"} bind:value={createPassword}
+                  class="input w-full" placeholder="your password"
+                  onkeydown={(e) => e.key === "Enter" && createProfile()} />
+                <button class="absolute right-3 top-1/2 -translate-y-1/2 bg-transparent border-none text-text-light cursor-pointer text-lg p-0 leading-none"
+                  onclick={() => { createShowPw = !createShowPw; }}
+                  title={createShowPw ? "Hide" : "Show"}>{createShowPw ? "🙈" : "👁️"}</button>
+              </div>
+              <button class="btn border-2 border-purple-light bg-white text-purple shrink-0"
+                style="padding:14px 16px;font-size:13px"
+                onclick={() => { createPassword = generatePassphrase(); }}
+                title="Generate a random passphrase">🎲</button>
+            </div>
           </div>
           {#if createError}
             <p class="form-error">{createError}</p>
@@ -215,10 +261,6 @@ onMount(() => {
         </div>
       {/if}
     </div>
-
-    <p class="text-xs text-text-light mt-8">
-      Made with 💖 &mdash; <a href="https://github.com/DateSlot/date-slot" class="text-purple no-underline hover:underline">GitHub</a>
-    </p>
   </div>
 {:else if page === "create-profile"}
   <a href="/" class="back-link">← Home</a>

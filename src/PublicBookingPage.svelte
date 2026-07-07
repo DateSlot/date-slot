@@ -124,8 +124,13 @@ function selectSlot(slot: AvailableSlot) {
   bookerCustomActivity = "";
 }
 
+function validateEmail(v: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+}
+
 async function confirmBooking() {
   if (!selectedSlot || !bookingName.trim() || !bookerEmail.trim()) return;
+  if (!validateEmail(bookerEmail)) { submitError = "Please enter a valid email address"; return; }
   submitting = true;
   submitError = "";
   try {

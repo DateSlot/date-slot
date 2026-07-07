@@ -1,16 +1,19 @@
 # a date with me? 💕
 
-A kawaii-themed interactive dating proposal site. Ask someone out with style — complete with a fleeing "No" button, activity picker, available time slots, RSVP storage, and confetti.
+A kawaii-themed multi-tenant booking platform where anyone can create a personal booking page, set available slots, and share their link. Each page features a **fleeing "No" button**, per-slot activity picker, and confetti celebration on confirmed bookings.
 
 ## Features
 
-- **Kawaii Aesthetic** — Pink/purple My Melody & Kuromi inspired design, Fredoka font, rounded corners, soft shadows
-- **Fleeing No Button** — GSAP-powered panicked escape with startle response, cubic flee curve, and idle return
-- **Activity Picker** — Choose from park, bar, restaurant, or museum
-- **Available Slots** — Owner sets available dates & times; users pick from free slots
-- **Admin Dashboard** — Manage slots, view bookings
-- **RSVP Backend** — PostgreSQL via Supabase
-- **Confetti** — Celebratory burst on confirmation
+- **Multi-tenant** — Every user gets their own `yourdomain.com/u/username` page with password-based editing
+- **Fleeing No Button** — GSAP-powered panicked escape on each `/u/username` page
+- **Activity Picker** — Slot owner presets an activity (park/bar/restaurant/museum/custom) or lets the booker choose
+- **Available Slots** — Owner sets available dates & times; bookers pick from free slots
+- **Pending / Accept / Deny Flow** — Inquiries arrive as pending; creator accepts (slot booked, confirmation email) or denies (slot freed, optional reason)
+- **Email Notifications** — Creator gets notified of new inquiries; bookers get confirmation/denial emails via Mailjet
+- **Things I Like 💖** — Customizable bio shown on the ask screen
+- **Password-based Editing** — No OAuth/email auth; SHA-256 password with optional passphrase generator
+- **Inline Creation** — Create your page directly on the landing page with GSAP animation
+- **Confetti** — Celebratory burst on confirmed booking
 
 ## Tech Stack
 
@@ -21,22 +24,26 @@ A kawaii-themed interactive dating proposal site. Ask someone out with style —
 | Animations | GSAP, canvas-confetti |
 | Backend | Express 5 (dev) / Vercel Functions (prod) |
 | Database | PostgreSQL via Supabase |
+| Email | Mailjet (200 emails/day free) |
 | Deployment | Vercel + Supabase |
 
 ## Setup
 
 ### 1. Supabase
 
-Create a Supabase project and run the migration in `supabase/migrations/001_initial.sql` via the SQL editor.
+Create a Supabase project and run the migrations in `supabase/migrations/` in order via the SQL editor.
 
 ### 2. Environment
 
-Copy `.env.example` to `.env` and fill in your Supabase credentials and an admin password:
+Copy `.env.example` to `.env` and fill in the values:
 
 ```env
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_KEY=service_role_key_here
-ADMIN_SECRET=choose-a-secure-password
+SUPABASE_SERVICE_ROLE_KEY=service_role_key_here
+MJ_APIKEY_PUBLIC=your_mailjet_public_key
+MJ_APIKEY_PRIVATE=your_mailjet_private_key
+MAILJET_FROM_EMAIL=verified-sender@email.com
+MAILJET_FROM_NAME=Date Slot
 ```
 
 ### 3. Development
@@ -48,99 +55,161 @@ npm run dev
 
 Vite proxies `/api` requests to the Express server at `localhost:3001`. The Express server loads `.env` via dotenv automatically.
 
-### 4. Admin
-
-Visit `/admin` (click the tiny ✦ at the bottom of the ask page) and log in with your `ADMIN_SECRET`. Add available date/time slots from the dashboard.
-
 ## Deployment (Vercel + Supabase)
-
-### Vercel
 
 1. Push to GitHub
 2. Import repo to Vercel
 3. Set build command: `npm run build`
 4. Set output directory: `dist`
-5. Add env vars in Vercel dashboard:
-   - `SUPABASE_URL`
-   - `SUPABASE_SERVICE_KEY`
-   - `ADMIN_SECRET`
+5. Add all env vars from `.env.example` in Vercel dashboard
 6. Deploy
 
-The `vercel.json` handles SPA rewrites and asset caching.
+The `vercel.json` handles API routing and SPA rewrites.
 
 ## API
 
-### `GET /api/available-slots`
+### `POST /api/create-profile`
+
+Create a new profile.
+
+```json
+{
+  "username": "string (lowercase, numbers, hyphens)",
+  "display_name": "string",
+  "email": "string",
+  "password": "string (SHA-256 hashed client-side)"
+}
+```
+
+### `POST /api/verify-profile`
+
+Log in to manage a profile.
+
+```json
+{
+  "username": "string",
+  "password": "string (SHA-256 hashed)"
+}
+```
+
+Returns profile data including `email`.
+
+### `GET /api/public-profile?username=...`
+
+Returns public profile data — display name, likes, and available slots (excluding those with pending/confirmed inquiries).
+
+### `GET /api/available-slots?username=...`
 
 Returns free slots grouped by date.
 
 ### `POST /api/booking`
 
-Book a time slot.
+Create a pending booking inquiry.
 
 ```json
 {
   "slot_id": "uuid",
   "name": "string",
-  "activity": "park | bar | restaurant | museum"
+  "email": "string",
+  "activity": "park | bar | restaurant | museum | (optional)"
 }
 ```
 
-### `POST /api/admin/verify`
+### `POST /api/confirm-booking`
 
-Authenticate as admin.
+Accept a pending inquiry (requires auth).
 
 ```json
 {
-  "password": "string"
+  "rsvp_id": "uuid",
+  "username": "string",
+  "password": "string (SHA-256)"
 }
 ```
 
-### `GET /api/admin/slots` (auth required)
+### `POST /api/deny-booking`
 
-View all slots with booking status.
+Deny a pending inquiry (requires auth).
 
-### `POST /api/admin/slots` (auth required)
+```json
+{
+  "rsvp_id": "uuid",
+  "username": "string",
+  "password": "string (SHA-256)",
+  "deny_reason": "string (optional)"
+}
+```
+
+### `GET /api/manage-slots?username=...` (auth required)
+
+Returns all slots for a profile with their booking status and inquiry details.
+
+### `POST /api/manage-slots` (auth required)
 
 Create a new available slot.
 
 ```json
 {
+  "username": "string",
+  "password": "string",
   "date": "YYYY-MM-DD",
-  "time_start": "HH:mm",
-  "time_end": "HH:mm"
+  "time": "HH:mm",
+  "activity": "park | bar | restaurant | museum | custom"
 }
 ```
 
-### `GET /api/admin/bookings` (auth required)
+### `DELETE /api/manage-slots` (auth required)
 
-View all bookings.
+```json
+{
+  "username": "string",
+  "password": "string",
+  "slot_id": "uuid"
+}
+```
+
+### `POST /api/update-likes`
+
+Update the "Things I like 💖" bio.
+
+```json
+{
+  "username": "string",
+  "password": "string",
+  "likes": "string"
+}
+```
 
 ## Project Structure
 
 ```
 ├── api/                    # Vercel Functions (production backend)
+│   ├── _email.js           # Mailjet sender helper
 │   ├── _supabase.js        # Shared Supabase client
-│   ├── available-slots.js  # GET /api/available-slots
-│   ├── booking.js          # POST /api/booking
-│   └── admin/
-│       ├── verify.js       # POST /api/admin/verify
-│       ├── slots.js        # GET+POST /api/admin/slots
-│       └── bookings.js     # GET /api/admin/bookings
+│   ├── available-slots.js
+│   ├── booking.js          # POST — creates pending inquiry
+│   ├── confirm-booking.js  # POST — accepts inquiry
+│   ├── create-profile.js
+│   ├── deny-booking.js     # POST — denies inquiry
+│   ├── manage-slots.js     # CRUD for slots
+│   ├── public-profile.js
+│   ├── update-likes.js
+│   ├── verify-profile.js
+│   └── admin/              # Legacy admin endpoints
 ├── server/
-│   └── index.js            # Express dev server (local development)
+│   └── index.js            # Express dev server
 ├── src/
-│   ├── App.svelte          # Main app (all pages + flee logic)
-│   ├── Admin.svelte        # Admin dashboard component
-│   ├── app.css             # Global styles (kawaii theme)
-│   ├── main.ts             # Svelte mount point
+│   ├── App.svelte          # Main app (routing, home page, flee logic)
+│   ├── CreateProfile.svelte
+│   ├── ProfileEditor.svelte # Password-gated manage page
+│   ├── PublicBookingPage.svelte # Dating proposal + booking flow
+│   ├── app.css             # Tailwind v4 + kawaii theme
+│   ├── main.ts
 │   └── lib/
-│       └── types.ts        # Shared TypeScript types
-├── supabase/migrations/    # Database schema
-├── dist/                   # Built frontend assets
-├── vercel.json             # Vercel deployment config
+│       └── types.ts        # Shared types
+├── supabase/migrations/    # Database schema (run in order)
+├── dist/                   # Built frontend
+├── vercel.json
 ├── .env.example
-├── Dockerfile
-├── vite.config.ts
 └── package.json
 ```

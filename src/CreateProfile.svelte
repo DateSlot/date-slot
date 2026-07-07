@@ -2,14 +2,38 @@
 import { onMount } from "svelte";
 import confetti from "canvas-confetti";
 
+const PASSPHRASE_WORDS = [
+  "cherry","blossom","sunset","rainbow","butterfly","honey","moonlight",
+  "starlight","cupcake","bubble","garden","ocean","crystal","velvet",
+  "caramel","lollipop","daisy","maple","amber","clover","pixie","breeze",
+  "coral","pearl","tulip","sugar","sparkle","twilight","waffle","pudding",
+  "cotton","candy","jelly","snuggle","purr","whisker","pancake","muffin",
+  "cookie","sprinkle","button","ribbon","glitter","dewdrop","petal","cozy",
+  "fuzzy","gentle","merry","pepper","toffee",
+];
+
+function generatePassphrase() {
+  const words: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    words.push(PASSPHRASE_WORDS[Math.floor(Math.random() * PASSPHRASE_WORDS.length)]);
+  }
+  return words.join("-");
+}
+
 let username = $state("");
 let displayName = $state("");
 let email = $state("");
 let password = $state("");
+let showPw = $state(false);
 let creating = $state(false);
 let error = $state("");
 let done = $state(false);
 let createdProfile = $state<{ username: string; display_name: string; email: string | null } | null>(null);
+
+let usernameErr = $derived(username.trim() && !/^[a-z0-9-]+$/.test(username.trim())
+  ? "Only lowercase letters, numbers, and hyphens" : "");
+let emailErr = $derived(email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+  ? "Please enter a valid email address" : "");
 
 async function create() {
   error = "";
@@ -21,8 +45,8 @@ async function create() {
     error = "Please enter a valid email address";
     return;
   }
-  if (!/^[a-z0-9-]+$/.test(username.trim().toLowerCase())) {
-    error = "Username: lowercase letters, numbers, and hyphens only";
+  if (!/^[a-z0-9-]+$/.test(username.trim())) {
+    error = "Only lowercase letters, numbers, and hyphens";
     return;
   }
   if (password.trim().length < 4) {
@@ -91,6 +115,9 @@ function goToEdit() {
             class="font-fredoka text-lg px-3.5 py-3.5 border-0 bg-transparent text-text flex-1 outline-none rounded-r-full"
             placeholder="your-name" />
         </div>
+        {#if usernameErr}
+          <p class="form-error" style="text-align:left">{usernameErr}</p>
+        {/if}
       </div>
       <div class="flex flex-col gap-1.5 text-left">
         <label class="label" for="name">Display name</label>
@@ -101,13 +128,27 @@ function goToEdit() {
         <label class="label" for="email">Notification email</label>
         <input id="email" type="email" bind:value={email}
           class="input" placeholder="you@email.com" />
+        {#if emailErr}
+          <p class="form-error" style="text-align:left">{emailErr}</p>
+        {/if}
         <p class="text-xs text-text-light ml-1 opacity-70">Get notified when someone books you</p>
       </div>
       <div class="flex flex-col gap-1.5 text-left">
         <label class="label" for="pass">Edit password</label>
-        <input id="pass" type="password" bind:value={password}
-          class="input" placeholder="at least 4 characters"
-          onkeydown={(e) => e.key === "Enter" && create()} />
+        <div class="flex gap-2 items-stretch">
+          <div class="flex-1 relative">
+            <input id="pass" type={showPw ? "text" : "password"} bind:value={password}
+              class="input w-full" placeholder="your password"
+              onkeydown={(e) => e.key === "Enter" && create()} />
+            <button class="absolute right-3 top-1/2 -translate-y-1/2 bg-transparent border-none text-text-light cursor-pointer text-lg p-0 leading-none"
+              onclick={() => { showPw = !showPw; }}
+              title={showPw ? "Hide" : "Show"}>{showPw ? "🙈" : "👁️"}</button>
+          </div>
+          <button class="btn border-2 border-purple-light bg-white text-purple shrink-0"
+            style="padding:14px 16px;font-size:13px"
+            onclick={() => { password = generatePassphrase(); }}
+            title="Generate a random passphrase">🎲</button>
+        </div>
         <p class="text-xs text-text-light ml-1 opacity-70">You'll need this to manage your slots later</p>
       </div>
       {#if error}
