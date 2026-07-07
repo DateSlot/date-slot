@@ -254,6 +254,13 @@ function fmtDate(d: string) {
   });
 }
 
+function isExpired(slot: SlotRow) {
+  if (slot.booking?.status && slot.booking.status !== "denied") return false;
+  const end = (slot.time_end || "23:59").slice(0, 5);
+  const dt = new Date(slot.date + "T" + end + ":00");
+  return dt < new Date();
+}
+
 function pendingSlots() {
   return slots.filter((s) => s.booking?.status === "pending");
 }
@@ -420,17 +427,19 @@ function publicUrl() {
                     <span class="italic" style="color:var(--color-text-light)">Any</span>
                   {/if}
                 </td>
-                <td>
-                  {#if slot.booking?.status === "pending"}
-                    <span class="badge pending">Pending</span>
-                  {:else if slot.booking?.status === "confirmed"}
-                    <span class="badge booked">Booked</span>
-                  {:else if slot.booking?.status === "denied"}
-                    <span class="badge denied">Denied</span>
-                  {:else}
-                    <span class="badge available">Free</span>
-                  {/if}
-                </td>
+                  <td>
+                    {#if slot.booking?.status === "pending"}
+                      <span class="badge pending">Pending</span>
+                    {:else if slot.booking?.status === "confirmed"}
+                      <span class="badge booked">Booked</span>
+                    {:else if slot.booking?.status === "denied"}
+                      <span class="badge denied">Denied</span>
+                    {:else if isExpired(slot)}
+                      <span class="badge expired">Expired</span>
+                    {:else}
+                      <span class="badge available">Free</span>
+                    {/if}
+                  </td>
                 <td class="text-sm">{slot.booking?.name ?? "—"}</td>
                 <td>
                   {#if !slot.booking || slot.booking.status === "denied"}
@@ -552,4 +561,5 @@ function publicUrl() {
   .badge.pending { background: #fff3cd; color: #856404; }
   .badge.booked { background: var(--color-pink-pale); color: var(--color-pink); }
   .badge.denied { background: #f8d7da; color: #721c24; }
+  .badge.expired { background: #e9ecef; color: #6c757d; }
 </style>
