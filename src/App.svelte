@@ -112,6 +112,7 @@ async function createProfile() {
         display_name: createDisplayName.trim(),
         email: createEmail.trim(),
         password: createPassword.trim(),
+        ...(window.turnstile?.getResponse() ? { turnstile_token: window.turnstile.getResponse() } : {}),
       }),
     });
     const data = await res.json();
@@ -137,7 +138,14 @@ function goToEdit() {
   }
 }
 
+let darkMode = $state(false);
+
 onMount(() => {
+  const stored = localStorage.getItem("dark");
+  const prefers = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  darkMode = stored !== null ? stored === "true" : prefers;
+  applyDark(darkMode);
+
   const path = window.location.pathname;
 
   const editMatch = path.match(/^\/u\/([^/]+)\/edit$/);
@@ -167,7 +175,21 @@ onMount(() => {
     }
   });
 });
+
+function applyDark(dark: boolean) {
+  document.documentElement.classList.toggle("dark", dark);
+  localStorage.setItem("dark", String(dark));
+}
+
+function toggleDark() {
+  darkMode = !darkMode;
+  applyDark(darkMode);
+}
 </script>
+
+<svelte:head>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</svelte:head>
 
 {#if page === "home"}
   <div class="card" style="padding-bottom:36px;overflow:hidden">
@@ -180,7 +202,8 @@ onMount(() => {
       class="input"
       placeholder="your-username"
       bind:value={manageUsername}
-        onkeydown={(e) => e.key === "Enter" && goToManage()} />
+        onkeydown={(e) => e.key === "Enter" && goToManage()}
+        aria-label="Your username" />
         <button class="btn btn-primary w-full" onclick={goToManage} disabled={!manageUsername.trim()}>Manage 🔐</button>
         <span class="text-sm text-text-light text-center mt-4">I don't have one yet:</span>
         <button class="btn btn-primary w-full text-lg" onclick={startCreate}>🌟 Create my own page ✨</button>
@@ -212,13 +235,13 @@ onMount(() => {
           <div class="flex flex-col gap-1.5 text-left">
             <label class="label" for="create-username">Username</label>
             <div class="flex items-stretch border-2 border-pink-light rounded-full bg-white focus-within:border-purple transition-[border-color] duration-150">
-              <span class="flex items-center px-3 text-sm text-text-light bg-pink-pale whitespace-nowrap rounded-l-full">{window.location.origin}/u/</span>
+              <span class="flex items-center px-3 text-sm text-text-light bg-pink-pale whitespace-nowrap rounded-l-full shrink-0">{window.location.host}/u/</span>
               <input id="create-username" type="text" bind:value={createUsername}
-                class="font-fredoka text-lg px-3.5 py-3 border-0 bg-transparent text-text flex-1 outline-none rounded-r-full"
+                class="font-fredoka text-lg px-3.5 py-3 border-0 bg-transparent text-text flex-1 outline-none rounded-r-full min-w-0"
                 placeholder="your-name" />
             </div>
             {#if usernameErr}
-              <p class="form-error" style="text-align:left">{usernameErr}</p>
+              <p class="form-error" style="text-align:left" role="alert">{usernameErr}</p>
             {/if}
           </div>
           <div class="flex flex-col gap-1.5 text-left">
@@ -231,7 +254,7 @@ onMount(() => {
             <input id="create-email" type="email" bind:value={createEmail}
               class="input" placeholder="you@email.com" />
             {#if emailErr}
-              <p class="form-error" style="text-align:left">{emailErr}</p>
+              <p class="form-error" style="text-align:left" role="alert">{emailErr}</p>
             {/if}
             <p class="text-xs text-text-light ml-1 opacity-70">Get notified when someone books you</p>
           </div>
@@ -244,16 +267,21 @@ onMount(() => {
                   onkeydown={(e) => e.key === "Enter" && createProfile()} />
                 <button class="absolute right-3 top-1/2 -translate-y-1/2 bg-transparent border-none text-text-light cursor-pointer text-lg p-0 leading-none"
                   onclick={() => { createShowPw = !createShowPw; }}
-                  title={createShowPw ? "Hide" : "Show"}>{createShowPw ? "🙈" : "👁️"}</button>
+                  title={createShowPw ? "Hide" : "Show"}
+                  aria-label={createShowPw ? "Hide password" : "Show password"}>{createShowPw ? "🙈" : "👁️"}</button>
               </div>
               <button class="btn border-2 border-purple-light bg-white text-purple shrink-0"
                 style="padding:14px 16px;font-size:13px"
                 onclick={() => { createPassword = generatePassphrase(); }}
-                title="Generate a random passphrase">🎲</button>
+                title="Generate a random passphrase"
+                aria-label="Generate random passphrase">🎲</button>
             </div>
           </div>
+          {#if import.meta.env.VITE_TURNSTILE_SITE_KEY}
+            <div id="turnstile-widget" class="cf-turnstile" data-sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY} style="margin:12px 0"></div>
+          {/if}
           {#if createError}
-            <p class="form-error">{createError}</p>
+            <p class="form-error" role="alert">{createError}</p>
           {/if}
           <button class="btn btn-primary" disabled={creating} onclick={createProfile}>
             {creating ? "Creating..." : "Create my page 💖"}
@@ -273,4 +301,38 @@ onMount(() => {
   <ProfileEditor username={pageParams.username} />
 {:else if page === "admin"}
   <Admin />
+
 {/if}
+
+<button class="dark-toggle" onclick={toggleDark} aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}>
+  {darkMode ? "☀️" : "🌙"}
+</button>
+
+<style>
+  .dark-toggle {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 100;
+    width: 42px;
+    height: 42px;
+    border: 2px solid var(--color-pink-light, #ffb3c6);
+    border-radius: 50%;
+    background: var(--color-white, #fff5f7);
+    cursor: pointer;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .dark-toggle:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  }
+  .dark-toggle:focus-visible {
+    outline: 2px solid var(--color-purple, #c77dff);
+    outline-offset: 3px;
+  }
+</style>

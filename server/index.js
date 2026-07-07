@@ -5,11 +5,22 @@ import { createHash } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sendEmail, bookingNotificationEmail, confirmationEmail, denialEmail } from "../api/_email.js";
+import { rateLimit } from "../api/_rate-limit.js";
+import { verifyTurnstile } from "../api/_verify-turnstile.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 app.use(express.json());
+
+app.use((req, res, next) => {
+  if (req.method !== "POST") return next();
+  const limit = rateLimit(req);
+  if (!limit.allowed) {
+    return res.status(429).json({ error: "Too many requests. Try again later.", ...limit });
+  }
+  next();
+});
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -64,6 +75,14 @@ app.get("/api/available-slots", async (_req, res) => {
 });
 
 app.post("/api/booking", async (req, res) => {
+  const { turnstile_token } = req.body;
+  if (turnstile_token) {
+    const verification = await verifyTurnstile(turnstile_token);
+    if (!verification.success) {
+      return res.status(400).json({ error: "Verification failed" });
+    }
+  }
+
   const { slot_id, name, email, activity } = req.body;
   if (!slot_id || !name?.trim() || !email?.trim()) {
     return res.status(400).json({ error: "Missing required fields" });
@@ -136,6 +155,14 @@ app.post("/api/booking", async (req, res) => {
 });
 
 app.post("/api/create-profile", async (req, res) => {
+  const { turnstile_token } = req.body;
+  if (turnstile_token) {
+    const verification = await verifyTurnstile(turnstile_token);
+    if (!verification.success) {
+      return res.status(400).json({ error: "Verification failed" });
+    }
+  }
+
   const { username, display_name, password, email } = req.body;
   if (!username?.trim() || !display_name?.trim() || !password?.trim()) {
     return res.status(400).json({ error: "Missing required fields" });

@@ -64,6 +64,7 @@ async function create() {
         display_name: displayName.trim(),
         email: email.trim(),
         password: password.trim(),
+        ...(window.turnstile?.getResponse() ? { turnstile_token: window.turnstile.getResponse() } : {}),
       }),
     });
     const data = await res.json();
@@ -89,6 +90,10 @@ function goToEdit() {
 }
 </script>
 
+<svelte:head>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</svelte:head>
+
 <div class="card" style="max-width:480px">
   <div class="deco">✧  ♡  ★  ♡  ✧</div>
 
@@ -110,13 +115,13 @@ function goToEdit() {
       <div class="flex flex-col gap-1.5 text-left">
         <label class="label" for="username">Username</label>
         <div class="flex items-stretch border-2 border-pink-light rounded-full bg-white focus-within:border-purple transition-[border-color] duration-150">
-          <span class="flex items-center px-3 text-sm text-text-light bg-pink-pale whitespace-nowrap rounded-l-full">{window.location.origin}/u/</span>
+          <span class="flex items-center px-3 text-sm text-text-light bg-pink-pale whitespace-nowrap rounded-l-full shrink-0">{window.location.host}/u/</span>
           <input id="username" type="text" bind:value={username}
-            class="font-fredoka text-lg px-3.5 py-3.5 border-0 bg-transparent text-text flex-1 outline-none rounded-r-full"
+            class="font-fredoka text-lg px-3.5 py-3.5 border-0 bg-transparent text-text flex-1 outline-none rounded-r-full min-w-0"
             placeholder="your-name" />
         </div>
         {#if usernameErr}
-          <p class="form-error" style="text-align:left">{usernameErr}</p>
+          <p class="form-error" style="text-align:left" role="alert">{usernameErr}</p>
         {/if}
       </div>
       <div class="flex flex-col gap-1.5 text-left">
@@ -129,7 +134,7 @@ function goToEdit() {
         <input id="email" type="email" bind:value={email}
           class="input" placeholder="you@email.com" />
         {#if emailErr}
-          <p class="form-error" style="text-align:left">{emailErr}</p>
+          <p class="form-error" style="text-align:left" role="alert">{emailErr}</p>
         {/if}
         <p class="text-xs text-text-light ml-1 opacity-70">Get notified when someone books you</p>
       </div>
@@ -142,17 +147,22 @@ function goToEdit() {
               onkeydown={(e) => e.key === "Enter" && create()} />
             <button class="absolute right-3 top-1/2 -translate-y-1/2 bg-transparent border-none text-text-light cursor-pointer text-lg p-0 leading-none"
               onclick={() => { showPw = !showPw; }}
-              title={showPw ? "Hide" : "Show"}>{showPw ? "🙈" : "👁️"}</button>
+              title={showPw ? "Hide" : "Show"}
+              aria-label={showPw ? "Hide password" : "Show password"}>{showPw ? "🙈" : "👁️"}</button>
           </div>
-          <button class="btn border-2 border-purple-light bg-white text-purple shrink-0"
-            style="padding:14px 16px;font-size:13px"
-            onclick={() => { password = generatePassphrase(); }}
-            title="Generate a random passphrase">🎲</button>
+        <button class="btn border-2 border-purple-light bg-white text-purple shrink-0"
+          style="padding:14px 16px;font-size:13px"
+          onclick={() => { password = generatePassphrase(); }}
+          title="Generate a random passphrase"
+          aria-label="Generate random passphrase">🎲</button>
         </div>
         <p class="text-xs text-text-light ml-1 opacity-70">You'll need this to manage your slots later</p>
       </div>
+      {#if import.meta.env.VITE_TURNSTILE_SITE_KEY}
+        <div id="turnstile-widget" class="cf-turnstile" data-sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY} style="margin:12px 0"></div>
+      {/if}
       {#if error}
-        <p class="form-error">{error}</p>
+        <p class="form-error" role="alert">{error}</p>
       {/if}
       <button class="btn btn-primary" disabled={creating} onclick={create}>
         {creating ? "Creating..." : "Create my page 💖"}
@@ -160,3 +170,12 @@ function goToEdit() {
     </div>
   {/if}
 </div>
+
+<style>
+  :global(.input:focus-visible),
+  :global(.btn:focus-visible),
+  :global(.btn-primary:focus-visible) {
+    outline: 2px solid var(--color-purple, #c77dff);
+    outline-offset: 2px;
+  }
+</style>

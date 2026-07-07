@@ -36,7 +36,7 @@
   padding: 14px 20px;
   border: 2px solid var(--color-pink-light);
   border-radius: 60px;
-  background: white;
+  background: var(--input-bg);
   color: var(--color-text);
   width: 100%;
   box-sizing: border-box;
@@ -44,6 +44,10 @@
   transition: border-color 0.15s;
   &:focus {
     border-color: var(--color-purple);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--color-purple, #c77dff);
+    outline-offset: 2px;
   }
 }
 
@@ -65,6 +69,10 @@
     opacity: 0.4;
     cursor: default;
   }
+  &:focus-visible {
+    outline: 2px solid var(--color-purple, #c77dff);
+    outline-offset: 2px;
+  }
 }
 
 @utility btn-primary {
@@ -77,6 +85,10 @@
   }
   &:active:not(:disabled) {
     transform: scale(0.95);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--color-purple, #c77dff);
+    outline-offset: 2px;
   }
 }
 
@@ -119,6 +131,10 @@
     background: var(--color-pink-pale);
     color: var(--color-text);
   }
+  &:focus-visible {
+    outline: 2px solid var(--color-purple, #c77dff);
+    outline-offset: 2px;
+  }
 }
 
 *, *::before, *::after {
@@ -136,11 +152,38 @@
   --text: #5a4a5e;
   --text-light: #8a7a8e;
   --shadow: rgba(200, 120, 180, 0.2);
+  --bg-gradient: linear-gradient(135deg, #ffd6e0 0%, #e8c4f0 50%, #ffd6e0 100%);
+  --input-bg: white;
 
   font-family: "Fredoka", system-ui, sans-serif;
   color: var(--text);
-  background: linear-gradient(135deg, #ffd6e0 0%, #e8c4f0 50%, #ffd6e0 100%);
+  background: var(--bg-gradient);
   min-height: 100vh;
+}
+
+:root.dark {
+  --pink: #ff8fab;
+  --pink-light: #ffb3c6;
+  --pink-pale: #3a2a3e;
+  --purple: #c77dff;
+  --purple-light: #e0aaff;
+  --lavender: #cdb4db;
+  --white: #1e1820;
+  --text: #e8dff0;
+  --text-light: #a89aae;
+  --shadow: rgba(0, 0, 0, 0.4);
+  --bg-gradient: linear-gradient(135deg, #1a121e 0%, #2a1a30 50%, #1a121e 100%);
+  --input-bg: #2a2030;
+
+  --color-pink: #ff8fab;
+  --color-pink-light: #ffb3c6;
+  --color-pink-pale: #3a2a3e;
+  --color-purple: #c77dff;
+  --color-purple-light: #e0aaff;
+  --color-lavender: #cdb4db;
+  --color-white: #1e1820;
+  --color-text: #e8dff0;
+  --color-text-light: #a89aae;
 }
 
 body {

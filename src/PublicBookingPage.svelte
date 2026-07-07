@@ -134,7 +134,9 @@ async function confirmBooking() {
   submitting = true;
   submitError = "";
   try {
+    const token = window.turnstile?.getResponse();
     const body: Record<string, string> = { slot_id: selectedSlot.id, name: bookingName.trim(), email: bookerEmail.trim() };
+    if (token) body.turnstile_token = token;
     if (!selectedSlot.activity) {
       body.activity = bookerActivity === CUSTOM_ACTIVITY ? bookerCustomActivity.trim() : bookerActivity;
     }
@@ -145,6 +147,7 @@ async function confirmBooking() {
     if (!res.ok) throw new Error("Failed to request");
     step = "done";
     confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"] });
+    try { window.turnstile?.reset(); } catch { /* ignore */ }
   } catch {
     step = "done";
     confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"] });
@@ -161,6 +164,10 @@ function activityLabel(a: string | null) {
   return opt ? `${opt.emoji} ${opt.title}` : `💫 ${a}`;
 }
 </script>
+
+<svelte:head>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</svelte:head>
 
 <svelte:window onmousemove={(e) => handlePointer(e.clientX, e.clientY)} onmouseleave={handlePointerLeave}
   ontouchstart={handleTouchStart} ontouchmove={handleTouchMove} />
@@ -181,7 +188,7 @@ function activityLabel(a: string | null) {
     {/if}
     <div class="flex justify-center gap-4 items-center">
       <button class="btn btn-primary px-9 py-3" onclick={sayYes}>Yes 💖</button>
-      <button bind:this={noBtn} class="btn border-2 border-pink-light bg-white text-pink touch-none select-none hover:bg-pink-pale px-9 py-3">No 💔</button>
+      <button bind:this={noBtn} class="btn border-2 border-pink-light bg-white text-pink touch-none select-none hover:bg-pink-pale px-9 py-3" aria-label="No">No 💔</button>
     </div>
     <div class="mt-5 pt-3.5 border-t border-pink-pale">
       <a href="/u/{username}/edit" class="text-sm font-medium text-pink-light no-underline hover:text-purple transition-colors duration-150">Manage 🔐</a>
@@ -250,12 +257,15 @@ function activityLabel(a: string | null) {
                     onclick={() => bookerActivity = CUSTOM_ACTIVITY}>✏️ Custom</button>
                 </div>
                 {#if bookerActivity === CUSTOM_ACTIVITY}
-                  <input type="text" bind:value={bookerCustomActivity} class="input" placeholder="e.g. Bowling 🎳" />
+                  <input type="text" bind:value={bookerCustomActivity} class="input" placeholder="e.g. Bowling 🎳" aria-label="Custom activity" />
                 {/if}
               </div>
             {/if}
 
-            {#if submitError}<p class="form-error">{submitError}</p>{/if}
+            {#if import.meta.env.VITE_TURNSTILE_SITE_KEY}
+              <div id="turnstile-widget" class="cf-turnstile" data-sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY} style="margin:12px 0"></div>
+            {/if}
+            {#if submitError}<p class="form-error" role="alert">{submitError}</p>{/if}
             <button class="btn btn-primary" disabled={!bookingName.trim() || !bookerEmail.trim() || submitting} onclick={confirmBooking}>
               {submitting ? "Sending..." : "Request date 💖"}
             </button>
@@ -365,5 +375,12 @@ function activityLabel(a: string | null) {
     background: linear-gradient(135deg, var(--color-pink), var(--color-purple-light));
     color: white;
     border-color: transparent;
+  }
+  .chip:focus-visible,
+  .slot-btn:focus-visible,
+  .act-opt:focus-visible,
+  .edit-link:focus-visible {
+    outline: 2px solid var(--color-purple, #c77dff);
+    outline-offset: 2px;
   }
 </style>

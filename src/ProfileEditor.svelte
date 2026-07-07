@@ -278,9 +278,10 @@ function publicUrl() {
     <p class="sub">Enter your password to edit</p>
     <div class="flex flex-col gap-4">
       <input type="password" bind:value={password} class="input" placeholder="password"
-        onkeydown={(e) => e.key === "Enter" && login()} />
+        onkeydown={(e) => e.key === "Enter" && login()}
+        aria-label="Password" />
       {#if loginError}
-        <p class="form-error">{loginError}</p>
+        <p class="form-error" role="alert">{loginError}</p>
       {/if}
       <button class="btn btn-primary" onclick={login} disabled={!password}>Login 💖</button>
     </div>
@@ -319,7 +320,7 @@ function publicUrl() {
           {/if}
         </p>
         {#if confirmError}
-          <p class="form-error" style="margin-top:6px">{confirmError}</p>
+          <p class="form-error" style="margin-top:6px" role="alert">{confirmError}</p>
         {/if}
         <div class="flex gap-2 mt-3 items-center">
           <button class="btn btn-primary" style="padding:8px 20px;font-size:14px"
@@ -336,7 +337,7 @@ function publicUrl() {
           {#if denying === slot.booking!.id}
             <div class="flex gap-2 items-center flex-1">
               <input type="text" bind:value={denyReason} class="input" placeholder="Reason (optional)"
-                style="font-size:14px;padding:8px 14px" />
+                style="font-size:14px;padding:8px 14px" aria-label="Reason for denial" />
               <button class="btn border-2 border-pink bg-pink-pale text-pink"
                 style="padding:8px 16px;font-size:13px;white-space:nowrap"
                 onclick={() => denyBooking(slot.booking!.id)}>Send</button>
@@ -352,9 +353,9 @@ function publicUrl() {
     <div class="bg-pink-pale rounded-2xl p-5 mb-5">
       <h2 class="heading2">Add a free slot ✨</h2>
       <div class="flex gap-2.5 items-end flex-wrap">
-        <input type="date" bind:value={newDate} class="input" min={new Date().toISOString().split("T")[0]} style="width:auto;flex:1" />
-        <input type="time" bind:value={newTimeStart} class="input time-input" />
-        <input type="time" bind:value={newTimeEnd} class="input time-input" />
+        <input type="date" bind:value={newDate} class="input" min={new Date().toISOString().split("T")[0]} style="width:auto;flex:1" aria-label="Date" />
+        <input type="time" bind:value={newTimeStart} class="input time-input" aria-label="Start time" />
+        <input type="time" bind:value={newTimeEnd} class="input time-input" aria-label="End time" />
         <button class="btn btn-primary" style="padding:14px 24px;white-space:nowrap" onclick={addSlot} disabled={!newDate || adding}>
           {adding ? "Adding..." : "Add 💖"}
         </button>
@@ -373,7 +374,7 @@ function publicUrl() {
           </button>
         </div>
         {#if newActivity === CUSTOM_ACTIVITY}
-          <input type="text" bind:value={newCustomActivity} class="input" placeholder="e.g. Bowling 🎳" />
+          <input type="text" bind:value={newCustomActivity} class="input" placeholder="e.g. Bowling 🎳" aria-label="Custom activity" />
         {/if}
       </div>
     </div>
@@ -385,7 +386,8 @@ function publicUrl() {
         bind:value={likes}
         placeholder="e.g. sushi, sunsets, cats, board games..."
         rows="3"
-        style="resize:vertical;font-size:16px;min-height:80px"></textarea>
+        style="resize:vertical;font-size:16px;min-height:80px"
+        aria-label="Things I like"></textarea>
       <div class="flex items-center gap-3 mt-2.5">
         <button class="btn btn-primary" style="padding:10px 28px;font-size:15px" onclick={saveLikes} disabled={likesSaving}>
           {likesSaving ? "Saving..." : "Save 💖"}
@@ -397,7 +399,7 @@ function publicUrl() {
     </div>
 
     {#if error}
-      <p class="form-error">{error}</p>
+      <p class="form-error" role="alert">{error}</p>
     {/if}
 
     {#if loading}
@@ -443,7 +445,7 @@ function publicUrl() {
                 <td class="text-sm">{slot.booking?.name ?? "—"}</td>
                 <td>
                   {#if !slot.booking || slot.booking.status === "denied"}
-                    <button class="btn-delete" disabled={deleting === slot.id} onclick={() => deleteSlot(slot.id)}>
+                    <button class="btn-delete" disabled={deleting === slot.id} onclick={() => deleteSlot(slot.id)} aria-label="Delete slot">
                       ✕
                     </button>
                   {/if}
@@ -562,4 +564,14 @@ function publicUrl() {
   .badge.booked { background: var(--color-pink-pale); color: var(--color-pink); }
   .badge.denied { background: #f8d7da; color: #721c24; }
   .badge.expired { background: #e9ecef; color: #6c757d; }
+  :global(.input:focus-visible),
+  :global(.btn:focus-visible),
+  :global(.btn-primary:focus-visible),
+  .btn-logout:focus-visible,
+  .btn-link:focus-visible,
+  .btn-delete:focus-visible,
+  .activity-opt:focus-visible {
+    outline: 2px solid var(--color-purple, #c77dff);
+    outline-offset: 2px;
+  }
 </style>

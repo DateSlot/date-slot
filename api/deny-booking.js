@@ -1,9 +1,15 @@
 import { createHash } from "node:crypto";
 import { getSupabase } from "./_supabase.js";
-import { sendEmail, denialEmail } from "./_email.js";
+import { sendEmail, bookingDenialEmail } from "./_email.js";
+import { rateLimit } from "./_rate-limit.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
+
+  const limit = rateLimit(req);
+  if (!limit.allowed) {
+    return res.status(429).json({ error: "Too many requests. Try again later.", ...limit });
+  }
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
