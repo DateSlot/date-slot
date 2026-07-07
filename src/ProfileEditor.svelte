@@ -56,6 +56,12 @@ onMount(async () => {
     password = saved;
     await tryLogin();
   }
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("registered") === "1") {
+    params.delete("registered");
+    const newUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "");
+    window.history.replaceState(null, "", newUrl);
+  }
 });
 
 async function tryLogin() {

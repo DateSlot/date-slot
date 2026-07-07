@@ -1,10 +1,10 @@
 import "dotenv/config";
 import express from "express";
 import { createClient } from "@supabase/supabase-js";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { sendEmail, bookingNotificationEmail, confirmationEmail, denialEmail, registrationConfirmationEmail } from "../api/_email.js";
+import { sendEmail, bookingNotificationEmail, confirmationEmail, denialEmail, registrationConfirmationEmail, registrationWelcomeEmail } from "../api/_email.js";
 import { rateLimit } from "../api/_rate-limit.js";
 import { verifyTurnstile } from "../api/_verify-turnstile.js";
 
@@ -164,56 +164,128 @@ app.post("/api/create-profile", async (req, res) => {
   }
 
   const { username, display_name, password, email } = req.body;
-  if (!username?.trim() || !display_name?.trim() || !password?.trim()) {
-    return res.status(400).json({ error: "Missing required fields" });
+  if (!username?.trim() || !display_name?.trim() || !password?.trim() || !email?.trim()) {
+    return res.status(400).json({ error: "All fields are required" });
   }
 
   if (!/^[a-z0-9-]+$/.test(username.trim())) {
     return res.status(400).json({ error: "Username can only contain lowercase letters, numbers, and hyphens" });
   }
 
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    return res.status(400).json({ error: "Invalid email address" });
+  }
+
   if (password.trim().length < 4) {
     return res.status(400).json({ error: "Password must be at least 4 characters" });
   }
 
-  const { data: existing } = await supabase
+  const { data: existingProfile } = await supabase
     .from("profiles")
     .select("id")
     .eq("username", username.trim().toLowerCase())
     .maybeSingle();
 
-  if (existing) {
+  if (existingProfile) {
+    return res.status(409).json({ error: "Username already taken" });
+  }
+
+  const { data: existingPending } = await supabase
+    .from("pending_registrations")
+    .select("id")
+    .eq("username", username.trim().toLowerCase())
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+
+  if (existingPending) {
     return res.status(409).json({ error: "Username already taken" });
   }
 
   const password_hash = createHash("sha256").update(password.trim()).digest("hex");
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-  const { data, error } = await supabase
-    .from("profiles")
+  const { error: insertError } = await supabase
+    .from("pending_registrations")
     .insert({
       username: username.trim().toLowerCase(),
       display_name: display_name.trim(),
+      email: email.trim(),
       password_hash,
-      email: email?.trim() || null,
+      token,
+      expires_at: expiresAt,
+    });
+
+  if (insertError) return res.status(500).json({ error: insertError.message });
+
+  const origin = req.headers.origin || `https://${req.headers.host || "date-slot.vercel.app"}`;
+  const confirmUrl = `${origin}/api/confirm-registration?token=${token}`;
+  const welcome = registrationConfirmationEmail({ displayName: display_name.trim(), confirmUrl });
+  await sendEmail({ to: email.trim(), ...welcome });
+
+  res.status(200).json({ success: true, message: "Confirmation email sent. Check your inbox (and spam folder!)" });
+});
+
+app.get("/api/confirm-registration", async (req, res) => {
+  const token = req.query.token;
+  if (!token) {
+    return res.redirect("/?error=missing_token");
+  }
+
+  const { data: pending, error: fetchError } = await supabase
+    .from("pending_registrations")
+    .select("*")
+    .eq("token", token)
+    .single();
+
+  if (fetchError || !pending) {
+    return res.redirect("/?error=invalid_link");
+  }
+
+  if (new Date(pending.expires_at) < new Date()) {
+    await supabase.from("pending_registrations").delete().eq("id", pending.id);
+    return res.redirect("/?error=expired");
+  }
+
+  const { data: existingProfile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("username", pending.username)
+    .maybeSingle();
+
+  if (existingProfile) {
+    await supabase.from("pending_registrations").delete().eq("id", pending.id);
+    return res.redirect("/?error=already_registered");
+  }
+
+  const { data: profile, error: insertError } = await supabase
+    .from("profiles")
+    .insert({
+      username: pending.username,
+      display_name: pending.display_name,
+      password_hash: pending.password_hash,
+      email: pending.email,
     })
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
-
-  if (data.email) {
-    const origin = req.headers.origin || `https://${req.headers.host || "date-slot.vercel.app"}`;
-    const manageUrl = `${origin}/u/${data.username}/edit`;
-    const welcome = registrationConfirmationEmail({
-      username: data.username,
-      displayName: data.display_name,
-      email: data.email,
-      manageUrl,
-    });
-    await sendEmail({ to: data.email, ...welcome });
+  if (insertError) {
+    return res.redirect("/?error=server_error");
   }
 
-  res.status(201).json({ id: data.id, username: data.username, display_name: data.display_name, email: data.email });
+  await supabase.from("pending_registrations").delete().eq("id", pending.id);
+
+  const origin = `https://${req.headers.host || "date-slot.vercel.app"}`;
+  const manageUrl = `${origin}/u/${profile.username}/edit`;
+
+  const welcome = registrationWelcomeEmail({
+    username: profile.username,
+    displayName: profile.display_name,
+    manageUrl,
+  });
+  await sendEmail({ to: profile.email, ...welcome });
+
+  res.redirect(`/u/${profile.username}/edit?registered=1`);
 });
 
 app.get("/api/public-profile", async (req, res) => {

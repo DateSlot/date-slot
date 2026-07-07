@@ -1,7 +1,6 @@
 <script lang="ts">
 import { onMount, tick } from "svelte";
 import { gsap } from "gsap";
-import confetti from "canvas-confetti";
 import Admin from "./Admin.svelte";
 import CreateProfile from "./CreateProfile.svelte";
 import PublicBookingPage from "./PublicBookingPage.svelte";
@@ -27,7 +26,7 @@ let createPassword = $state("");
 let createShowPw = $state(false);
 let creating = $state(false);
 let createError = $state("");
-let createdProfile = $state<{ username: string; display_name: string; email: string | null } | null>(null);
+let createdProfile = $state<{ username: string } | null>(null);
 
 let usernameErr = $derived(createUsername.trim() && !/^[a-z0-9-]+$/.test(createUsername.trim())
   ? "Only lowercase letters, numbers, and hyphens" : "");
@@ -120,9 +119,8 @@ async function createProfile() {
       createError = data.error || "Something went wrong";
       return;
     }
-    createdProfile = data;
     sessionStorage.setItem("edit_password", createPassword.trim());
-    confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"] });
+    createdProfile = { username: createUsername.trim().toLowerCase() };
     await tick();
     gsap.fromTo(".success-state", { opacity: 0, scale: 0.95 }, { opacity: 1, scale: 1, duration: 0.4, ease: "power2.out" });
   } catch {
@@ -136,6 +134,10 @@ function goToEdit() {
   if (createdProfile) {
     window.location.href = `/u/${createdProfile.username}/edit`;
   }
+}
+
+function resendEmail() {
+  createProfile();
 }
 
 let darkMode = $state(false);
@@ -216,13 +218,16 @@ function toggleDark() {
       {#if createdProfile}
         <div class="success-state">
           <div class="deco">✧  ♡  ★  ♡  ✧</div>
-          <h1 class="font-fredoka font-semibold text-2xl text-text mb-2 leading-tight">You're live! 🎉</h1>
-          <p class="sub">Your booking page is ready</p>
-          <div class="bg-pink-pale rounded-2xl p-4 mb-5">
-            <p class="text-xs text-text-light mb-1">Your public link</p>
-            <code class="font-fredoka text-lg text-purple break-all">{window.location.origin}/u/{createdProfile.username}</code>
+          <h1 class="font-fredoka font-semibold text-2xl text-text mb-2 leading-tight">Check your email! 📧</h1>
+          <p class="sub">We sent a confirmation link to your inbox.</p>
+          <div class="bg-pink-pale rounded-2xl p-4 mb-4">
+            <p class="text-sm text-text leading-relaxed">
+              Click the link in the email to activate your page.
+              <br /><br />
+              <strong>📁 Didn't see it? Check your Spam folder!</strong>
+            </p>
           </div>
-          <button class="btn btn-primary" onclick={goToEdit}>Manage slots →</button>
+          <button class="btn btn-primary" onclick={goToEdit}>I confirmed, take me there →</button>
         </div>
       {:else}
         <div class="deco">✧  ♡  ★  ♡  ✧</div>

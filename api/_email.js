@@ -72,13 +72,32 @@ export function confirmationEmail({ bookerName, creatorName, date, timeStart, ti
   };
 }
 
-export function registrationConfirmationEmail({ username, displayName, email, manageUrl }) {
+export function registrationConfirmationEmail({ displayName, confirmUrl }) {
+  return {
+    subject: "Confirm your Date Slot registration ✨",
+    text: [
+      `Hey ${displayName}! 💖`,
+      ``,
+      `Thanks for signing up for Date Slot! Click the link below to confirm your registration:`,
+      ``,
+      `${confirmUrl}`,
+      ``,
+      `⚠️  This link expires in 24 hours.`,
+      `⚠️  If you don't see this email in your inbox, please check your Spam/Junk folder!`,
+      ``,
+      `See you soon! 💕`,
+      `— Date Slot`,
+    ].join("\n"),
+  };
+}
+
+export function registrationWelcomeEmail({ username, displayName, manageUrl }) {
   return {
     subject: "Welcome to Date Slot! 🎉",
     text: [
       `Hey ${displayName}! 💖`,
       ``,
-      `Your page is ready! 🎉`,
+      `You're all set! 🎉`,
       ``,
       `🌐 Your public page: https://date-slot.vercel.app/u/${username}`,
       `🔐 Manage your slots: ${manageUrl}`,

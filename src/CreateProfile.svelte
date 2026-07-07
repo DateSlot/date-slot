@@ -1,6 +1,5 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import confetti from "canvas-confetti";
 
 const PASSPHRASE_WORDS = [
   "cherry","blossom","sunset","rainbow","butterfly","honey","moonlight",
@@ -28,7 +27,7 @@ let showPw = $state(false);
 let creating = $state(false);
 let error = $state("");
 let done = $state(false);
-let createdProfile = $state<{ username: string; display_name: string; email: string | null } | null>(null);
+let createdProfile = $state<{ username: string } | null>(null);
 
 let usernameErr = $derived(username.trim() && !/^[a-z0-9-]+$/.test(username.trim())
   ? "Only lowercase letters, numbers, and hyphens" : "");
@@ -72,10 +71,9 @@ async function create() {
       error = data.error || "Something went wrong";
       return;
     }
-    createdProfile = data;
-    done = true;
     sessionStorage.setItem("edit_password", password.trim());
-    confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"] });
+    createdProfile = { username: username.trim().toLowerCase() };
+    done = true;
   } catch {
     error = "Something went wrong";
   } finally {
@@ -98,16 +96,17 @@ function goToEdit() {
   <div class="deco">✧  ♡  ★  ♡  ✧</div>
 
   {#if done && createdProfile}
-    <h1 class="font-fredoka font-semibold text-2xl text-text mb-2 leading-tight">You're live! 🎉</h1>
-    <p class="sub">Your booking page is ready</p>
-    <div class="bg-pink-pale rounded-2xl p-4 mb-5">
-      <p class="text-xs text-text-light mb-1">Your public link</p>
-      <code class="font-fredoka text-lg text-purple break-all">{window.location.origin}/u/{createdProfile.username}</code>
+    <div class="deco">✧  ♡  ★  ♡  ✧</div>
+    <h1 class="font-fredoka font-semibold text-2xl text-text mb-2 leading-tight">Check your email! 📧</h1>
+    <p class="sub">We sent a confirmation link to your inbox.</p>
+    <div class="bg-pink-pale rounded-2xl p-4 mb-4">
+      <p class="text-sm text-text leading-relaxed">
+        Click the link in the email to activate your page.
+        <br /><br />
+        <strong>📁 Didn't see it? Check your Spam folder!</strong>
+      </p>
     </div>
-    <div class="flex flex-col gap-5">
-      <p class="sub" style="margin-bottom:0">Share this link so others can book your free slots!</p>
-      <button class="btn btn-primary" onclick={goToEdit}>Manage slots →</button>
-    </div>
+    <button class="btn btn-primary" onclick={goToEdit}>I confirmed, take me there →</button>
   {:else}
     <h1 class="font-fredoka font-semibold text-2xl text-text mb-2 leading-tight">Create your booking page ✨</h1>
     <p class="sub">Get your own link to share with others</p>
