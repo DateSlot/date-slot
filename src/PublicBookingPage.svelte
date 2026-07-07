@@ -226,9 +226,10 @@ function activityLabel(a: string | null) {
   }
   .slot-btn:hover { border-color: var(--color-purple); background: var(--color-pink-pale); }
   .slot-btn.active {
+    border: none;
+    padding: 14px 22px;
     background: linear-gradient(135deg, var(--color-pink), var(--color-purple-light));
     color: white;
-    border-color: transparent;
     box-shadow: 0 4px 16px rgba(200, 120, 180, 0.3);
   }
   .slot-activity { font-size: 12px; opacity: 0.8; }
@@ -255,9 +256,10 @@ function activityLabel(a: string | null) {
   }
   .act-opt:hover { background: var(--color-pink-pale); }
   .act-opt.active {
+    border: none;
+    padding: 8px 16px;
     background: linear-gradient(135deg, var(--color-pink), var(--color-purple-light));
     color: white;
-    border-color: transparent;
   }
   .slot-btn:focus-visible,
   .act-opt:focus-visible,
