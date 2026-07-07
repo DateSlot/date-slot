@@ -129,7 +129,11 @@ function validateEmail(v: string) {
 }
 
 async function confirmBooking() {
-  if (!selectedSlot || !bookingName.trim() || !bookerEmail.trim()) return;
+  console.log("confirmBooking called", { selectedSlot: !!selectedSlot, name: bookingName, email: bookerEmail });
+  if (!selectedSlot || !bookingName.trim() || !bookerEmail.trim()) {
+    console.log("confirmBooking early return", { selectedSlot: !!selectedSlot, name: bookingName.trim(), email: bookerEmail.trim() });
+    return;
+  }
   if (!validateEmail(bookerEmail)) { submitError = "Please enter a valid email address"; return; }
   submitting = true;
   submitError = "";
