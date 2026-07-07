@@ -1,14 +1,12 @@
 <script lang="ts">
 import { onMount, tick } from "svelte";
 import { gsap } from "gsap";
-import Admin from "./Admin.svelte";
 import CreateProfile from "./CreateProfile.svelte";
 import PublicBookingPage from "./PublicBookingPage.svelte";
 import ProfileEditor from "./ProfileEditor.svelte";
 
 type Page =
   | "home"
-  | "admin"
   | "create-profile"
   | "profile-book"
   | "profile-edit";
@@ -304,9 +302,6 @@ function toggleDark() {
 {:else if page === "profile-edit"}
   <a href="/" class="back-link">← Home</a>
   <ProfileEditor username={pageParams.username} />
-{:else if page === "admin"}
-  <Admin />
-
 {/if}
 
 <button class="dark-toggle" onclick={toggleDark} aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}>

@@ -185,17 +185,19 @@ Update the "Things I like 💖" bio.
 ```
 ├── api/                    # Vercel Functions (production backend)
 │   ├── _email.js           # Mailjet sender helper
+│   ├── _rate-limit.js      # In-memory rate limiter
 │   ├── _supabase.js        # Shared Supabase client
+│   ├── _verify-turnstile.js
 │   ├── available-slots.js
 │   ├── booking.js          # POST — creates pending inquiry
 │   ├── confirm-booking.js  # POST — accepts inquiry
-│   ├── create-profile.js
+│   ├── confirm-registration.js  # GET — verifies email token
+│   ├── create-profile.js   # POST — stores pending registration
 │   ├── deny-booking.js     # POST — denies inquiry
 │   ├── manage-slots.js     # CRUD for slots
 │   ├── public-profile.js
 │   ├── update-likes.js
-│   ├── verify-profile.js
-│   └── admin/              # Legacy admin endpoints
+│   └── verify-profile.js
 ├── server/
 │   └── index.js            # Express dev server
 ├── src/
@@ -203,9 +205,11 @@ Update the "Things I like 💖" bio.
 │   ├── CreateProfile.svelte
 │   ├── ProfileEditor.svelte # Password-gated manage page
 │   ├── PublicBookingPage.svelte # Dating proposal + booking flow
-│   ├── app.css             # Tailwind v4 + kawaii theme
-│   ├── main.ts
+│   ├── app.css             # Tailwind v4 + kawaii theme + dark mode
+│   ├── main.ts             # Sentry init + Svelte mount
 │   └── lib/
+│       ├── __tests__/
+│       │   └── types.test.ts
 │       └── types.ts        # Shared types
 ├── supabase/migrations/    # Database schema (run in order)
 ├── dist/                   # Built frontend

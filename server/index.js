@@ -27,10 +27,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-function isAdmin(req) {
-  return req.headers.authorization === `Bearer ${process.env.ADMIN_SECRET}`;
-}
-
 function getProfileAuth(req) {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) return null;
@@ -602,80 +598,6 @@ app.post("/api/update-likes", async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
-});
-
-app.post("/api/admin/verify", (req, res) => {
-  const { password } = req.body;
-  res.json({ success: password === process.env.ADMIN_SECRET });
-});
-
-app.get("/api/admin/slots", async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ error: "Unauthorized" });
-
-  const { data, error } = await supabase
-    .from("available_slots")
-    .select(`id, date, time_start, time_end, is_booked, created_at, rsvps ( name, activity )`)
-    .is("profile_id", null)
-    .order("date", { ascending: false })
-    .order("time_start");
-
-  if (error) return res.status(500).json({ error: error.message });
-
-  const slots = data.map((s) => ({
-    id: s.id,
-    date: s.date,
-    time_start: s.time_start,
-    time_end: s.time_end,
-    is_booked: s.is_booked,
-    booker_name: s.rsvps?.[0]?.name ?? null,
-    booker_activity: s.rsvps?.[0]?.activity ?? null,
-    created_at: s.created_at,
-  }));
-
-  res.json(slots);
-});
-
-app.post("/api/admin/slots", async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ error: "Unauthorized" });
-
-  const { date, time_start, time_end } = req.body;
-  if (!date || !time_start || !time_end) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-
-  const { data, error } = await supabase
-    .from("available_slots")
-    .insert({ date, time_start, time_end })
-    .select()
-    .single();
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.status(201).json(data);
-});
-
-app.get("/api/admin/bookings", async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ error: "Unauthorized" });
-
-  const { data, error } = await supabase
-    .from("rsvps")
-    .select(`id, slot_id, name, activity, created_at, available_slots ( date, time_start, time_end )`)
-    .is("profile_id", null)
-    .order("created_at", { ascending: false });
-
-  if (error) return res.status(500).json({ error: error.message });
-
-  const bookings = data.map((b) => ({
-    id: b.id,
-    slot_id: b.slot_id,
-    name: b.name,
-    activity: b.activity,
-    date: b.available_slots?.date,
-    time_start: b.available_slots?.time_start,
-    time_end: b.available_slots?.time_end,
-    created_at: b.created_at,
-  }));
-
-  res.json(bookings);
 });
 
 if (process.env.NODE_ENV === "production") {
