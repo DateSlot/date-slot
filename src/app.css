@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+@theme {
+  --color-pink: #ff8fab;
+  --color-pink-light: #ffb3c6;
+  --color-pink-pale: #ffe0e6;
+  --color-purple: #c77dff;
+  --color-purple-light: #e0aaff;
+  --color-lavender: #cdb4db;
+  --color-white: #fff5f7;
+  --color-text: #5a4a5e;
+  --color-text-light: #8a7a8e;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }

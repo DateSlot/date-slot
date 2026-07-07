@@ -52,21 +52,16 @@ onMount(() => {
   <div class="card">
     <div class="deco">✧  ♡  ★  ♡  ✧</div>
     <h1>Date Slot ✨</h1>
-    <div class="flex-col content-stretch border-solid">
-      <div>
-        <p class="sub">Create your personal booking page and share the link with someone special 💕</p>
-      </div>
-      <div>
-        <a href="/create" class="btn primary">Create your page ✨</a>
-      </div>
-      <div class="">
+    <p class="sub">Create your personal booking page and share the link with someone special 💕</p>
+    <div class="flex flex-col items-stretch gap-3">
+      <a href="/create" class="btn primary w-full">Create your page ✨</a>
+      <div class="flex flex-col items-stretch gap-2 bg-pink-pale rounded-2xl p-3">
         <span class="manage-label">Already have one?</span>
-
-      </div>
-      <div class="">
-        <input type="text" class="manage-input" placeholder="your-username" bind:value={manageUsername}
-          onkeydown={(e) => e.key === "Enter" && goToManage()} />
-        <button class="btn small" onclick={goToManage} disabled={!manageUsername.trim()}>Manage</button>
+        <div class="flex gap-2">
+          <input type="text" class="manage-input" placeholder="your-username" bind:value={manageUsername}
+            onkeydown={(e) => e.key === "Enter" && goToManage()} />
+          <button class="btn small shrink-0" onclick={goToManage} disabled={!manageUsername.trim()}>Manage</button>
+        </div>
       </div>
     </div>
     <p class="footer-text">
@@ -116,7 +111,6 @@ onMount(() => {
   .sub {
     font-size: 16px;
     color: var(--text-light);
-    margin: 0 0 32px;
     line-height: 1.5;
   }
 
@@ -137,7 +131,7 @@ onMount(() => {
     cursor: pointer;
     white-space: nowrap;
     text-decoration: none;
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
     transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
@@ -188,7 +182,9 @@ onMount(() => {
     border-radius: 60px;
     background: white;
     color: var(--text);
-    width: 160px;
+    width: 0;
+    min-width: 0;
+    flex: 1;
     outline: none;
     transition: border-color 0.15s;
     box-sizing: border-box;
