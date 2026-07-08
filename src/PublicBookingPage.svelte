@@ -66,7 +66,8 @@ async function confirmBooking() {
   submitting = true;
   submitError = "";
   try {
-    const token = window.turnstile?.getResponse();
+    let token: string | undefined;
+    try { token = window.turnstile?.getResponse(); } catch { /* turnstile not ready */ }
     const body: Record<string, string> = { slot_id: selectedSlot.id, name: bookingName.trim(), email: bookerEmail.trim() };
     if (token) body.turnstile_token = token;
     if (!selectedSlot.activity) {
@@ -84,7 +85,8 @@ async function confirmBooking() {
     done = true;
     confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ["#ff8fab", "#c77dff", "#ffb3c6", "#e0aaff"] });
     try { window.turnstile?.reset(); } catch { /* ignore */ }
-  } catch {
+  } catch (e) {
+    console.error("confirmBooking error:", e);
     submitError = "Couldn't reach the server. Check your connection and try again.";
   } finally { submitting = false; }
 }
